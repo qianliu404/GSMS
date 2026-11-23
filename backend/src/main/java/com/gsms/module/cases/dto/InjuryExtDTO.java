@@ -18,7 +18,7 @@ public class InjuryExtDTO {
     private LocalDate appraisalDate;
     private String appraisalLevel;
     /** 鉴定休假天数（天） */
-    private Integer restDays;
+    private BigDecimal restDays;
     private BigDecimal treatmentAmount;
     /** 三项一次性待遇：状态 + 金额 */
     private String subsidyDisabilityStatus;

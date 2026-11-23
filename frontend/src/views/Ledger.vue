@@ -144,7 +144,7 @@
             </template>
             <template v-else-if="col.key === 'restDays'">
               <template v-if="row.caseType === 'INJURY'">
-                <span v-if="row.restDays !== null && row.restDays !== undefined">{{ row.restDays }} 天</span>
+                <span v-if="row.restDays !== null && row.restDays !== undefined">{{ fmtDays(row.restDays) }} 天</span>
                 <span v-else class="cell-dim">待登记</span>
               </template>
               <span v-else class="cell-dim">—</span>
@@ -325,6 +325,11 @@
 </template>
 
 <script setup>
+function fmtDays(v) {
+  const n = Number(v)
+  return Number.isFinite(n) ? String(Number(n.toFixed(1))) : (v ?? '')
+}
+
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Search, Download, Setting } from '@element-plus/icons-vue'
@@ -645,7 +650,7 @@ function cellText(row, key) {
     case 'description':
       return blank(row.description)
     case 'restDays':
-      return injury ? (row.restDays === null || row.restDays === undefined ? '待登记' : `${row.restDays} 天`) : '—'
+      return injury ? (row.restDays === null || row.restDays === undefined ? '待登记' : `${fmtDays(row.restDays)} 天`) : '—'
     case 'performAmount':
       if (injury) return '—'
       return row.performAmount === null || row.performAmount === undefined

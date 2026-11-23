@@ -35,8 +35,8 @@ public class LedgerVO {
     private String recognizeResultName;
     /** 劳动能力鉴定结论，如：九级 */
     private String appraisalLevel;
-    /** 鉴定休假天数（天） */
-    private Integer restDays;
+    /** 鉴定休假天数（天），允许小数 */
+    private BigDecimal restDays;
     /** 三项一次性待遇 */
     private String subsidyDisabilityStatus;
     private BigDecimal subsidyDisabilityAmount;

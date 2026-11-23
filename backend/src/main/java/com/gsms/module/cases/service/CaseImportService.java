@@ -501,7 +501,7 @@ public class CaseImportService {
             }
         }
 
-        row.setRestDays(parseInt(row.getRestDaysText(), "休假天数", errors));
+        row.setRestDays(parseDecimal(row.getRestDaysText(), "休假天数", errors));
         row.setAwardAmount(parseAmount(row.getAwardAmountText(), "裁决/调解金额", errors));
         row.setPerformAmount(parseAmount(row.getPerformAmountText(), "履行款", errors));
         row.setSubsidyDisabilityAmount(parseAmount(row.getSubsidyDisabilityText(), "一次性伤残金金额", errors));
@@ -567,6 +567,19 @@ public class CaseImportService {
         }
         try {
             return new BigDecimal(text.replace(",", "").trim()).intValue();
+        } catch (NumberFormatException e) {
+            errors.add(field + "必须是数字：" + text);
+            return null;
+        }
+    }
+
+    /** 小数解析（休假天数等允许 0.5 天） */
+    private BigDecimal parseDecimal(String text, String field, List<String> errors) {
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            return new BigDecimal(text.replace(",", "").trim()).setScale(1, java.math.RoundingMode.HALF_UP);
         } catch (NumberFormatException e) {
             errors.add(field + "必须是数字：" + text);
             return null;

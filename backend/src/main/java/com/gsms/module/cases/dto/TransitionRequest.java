@@ -24,7 +24,7 @@ public class TransitionRequest {
     /** 劳动能力鉴定结论，如「九级」 */
     private String appraisalLevel;
     /** 鉴定休假天数（天） */
-    private Integer restDays;
+    private BigDecimal restDays;
     /** 仲裁受理日期 yyyy-MM-dd */
     private String acceptDate;
     /** 履行款金额 */

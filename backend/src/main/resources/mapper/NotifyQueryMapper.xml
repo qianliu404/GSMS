@@ -22,6 +22,7 @@
         deadlineDate  d.deadline_date
         occurDate     c.occur_date
         overdueLevel  d.overdue_level
+        started       d.start_time IS NULL/NOT NULL（是否已开启计时）
     -->
     <sql id="conditionSql">
         <if test="conditions != null and conditions.size() > 0">
@@ -43,6 +44,12 @@
                                 <when test="cond.field == 'deptName'"> AND c.department_name = #{cond.value} </when>
                                 <when test="cond.field == 'plantArea'"> AND c.plant_area = #{cond.value} </when>
                                 <when test="cond.field == 'workshopTeam'"> AND c.workshop_team = #{cond.value} </when>
+                                <when test="cond.field == 'started'">
+                                    <choose>
+                                        <when test="cond.value == '1'"> AND d.start_time IS NOT NULL </when>
+                                        <otherwise> AND d.start_time IS NULL </otherwise>
+                                    </choose>
+                                </when>
                             </choose>
                         </when>
                         <when test="cond.op == 'NE'">
@@ -52,6 +59,12 @@
                                 <when test="cond.field == 'nodeCode'"> AND d.node_code &lt;&gt; #{cond.value} </when>
                                 <when test="cond.field == 'deadlineType'"> AND d.deadline_type &lt;&gt; #{cond.value} </when>
                                 <when test="cond.field == 'plantArea'"> AND c.plant_area &lt;&gt; #{cond.value} </when>
+                                <when test="cond.field == 'started'">
+                                    <choose>
+                                        <when test="cond.value == '1'"> AND d.start_time IS NULL </when>
+                                        <otherwise> AND d.start_time IS NOT NULL </otherwise>
+                                    </choose>
+                                </when>
                             </choose>
                         </when>
                         <when test="cond.op == 'CONTAINS'">

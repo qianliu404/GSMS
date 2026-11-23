@@ -61,7 +61,7 @@ public class CaseImportRow {
     private String recognizeCode;
     private String resultCode;
     private String performCode;
-    private Integer restDays;
+    private BigDecimal restDays;
     private BigDecimal awardAmount;
     private BigDecimal performAmount;
     private BigDecimal subsidyDisabilityAmount;

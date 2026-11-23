@@ -293,7 +293,7 @@ public class LedgerService {
             case "description":
                 return dash(vo.getDescription());
             case "restDays":
-                return injury ? (vo.getRestDays() == null ? "待登记" : vo.getRestDays() + " 天") : "—";
+                return injury ? (vo.getRestDays() == null ? "待登记" : vo.getRestDays().stripTrailingZeros().toPlainString() + " 天") : "—";
             case "performAmount":
                 if (injury) {
                     return "—";

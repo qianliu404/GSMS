@@ -77,7 +77,7 @@ public final class CaseImportColumns {
         add("injuryReason", "受伤原因", false, "仅工伤案件填", "设备故障导致右手挤压伤", 26);
         add("recognize", "工伤认定情况", false, "已认定/不予认定/申报中/未申报", "已认定", 14);
         add("appraisalLevel", "劳动能力鉴定结论", false, "如：九级、未达级", "九级", 18);
-        add("restDays", "休假天数", false, "整数，天", "90", 10);
+        add("restDays", "休假天数", false, "数字，天，可含小数", "90.5", 10);
         add("subsidyDisability", "一次性伤残金金额", false, "元，留空表示未申领", "45000", 18);
         add("subsidyMedical", "一次性医疗金金额", false, "元，留空表示未申领", "12000", 18);
         add("subsidyEmployment", "一次性就业金金额", false, "元，留空表示未申领", "30000", 18);

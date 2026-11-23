@@ -70,7 +70,7 @@ CREATE TABLE case_injury_ext (
   recognize_result VARCHAR(50)   DEFAULT NULL COMMENT 'RECOGNIZED/NOT_RECOGNIZED',
   appraisal_date   DATE          DEFAULT NULL COMMENT '鉴定日期',
   appraisal_level  VARCHAR(20)   DEFAULT NULL COMMENT '伤残等级：一至十级/无级别',
-  rest_days        INT           DEFAULT NULL COMMENT '鉴定休假天数（天）',
+  rest_days        DECIMAL(6,1)  DEFAULT NULL COMMENT '鉴定休假天数（天），允许小数',
   treatment_amount DECIMAL(14,2) DEFAULT NULL COMMENT '待遇金额（AES加密，敏感）',
   subsidy_disability_status VARCHAR(20)   NOT NULL DEFAULT 'NOT_APPLIED' COMMENT '一次性伤残补助金申领状态',
   subsidy_disability_amount DECIMAL(14,2) NOT NULL DEFAULT 0 COMMENT '一次性伤残补助金金额',

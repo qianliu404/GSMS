@@ -22,8 +22,8 @@ public class CaseInjuryExt {
     private String recognizeResult;
     private LocalDate appraisalDate;
     private String appraisalLevel;
-    /** 鉴定休假天数（天） */
-    private Integer restDays;
+    /** 鉴定休假天数（天），允许小数（如 0.5 天） */
+    private BigDecimal restDays;
     /**
      * 待遇金额。与裁决金额同理：报表需聚合，保留数值明文，展示层按角色脱敏。
      */

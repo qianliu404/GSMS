@@ -691,8 +691,8 @@
             <el-input v-model="editForm.injuryReason" placeholder="如：设备故障导致右手挤压伤" />
           </el-form-item>
           <el-form-item v-if="isInjury" label="休假天数">
-            <el-input-number v-model="editForm.restDays" :min="0" :precision="0" :controls="false"
-                             placeholder="按鉴定结论填写" style="width: 100%" />
+            <el-input-number v-model="editForm.restDays" :min="0" :precision="1" :step="0.5" :controls="false"
+                             placeholder="按鉴定结论填写，可填小数" style="width: 100%" />
           </el-form-item>
           <el-form-item v-if="!isInjury" label="履行款（元）">
             <el-input-number v-model="editForm.performAmount" :min="0" :precision="2" :controls="false"

@@ -84,6 +84,10 @@ public class NotifyService {
         CONDITION_FIELDS.add(field("deptName", "责任部门", "TEXT", "EQ", "CONTAINS"));
         CONDITION_FIELDS.add(field("plantArea", "厂区", "TEXT", "EQ", "NE", "CONTAINS", "IS_EMPTY", "NOT_EMPTY"));
         CONDITION_FIELDS.add(field("workshopTeam", "车间班组", "TEXT", "EQ", "CONTAINS"));
+        ConditionFieldVO started = field("started", "是否已开启计时", "ENUM", "EQ", "NE");
+        started.getOptions().add(new ConditionFieldVO.Option("1", "已开启"));
+        started.getOptions().add(new ConditionFieldVO.Option("0", "未开启"));
+        CONDITION_FIELDS.add(started);
         CONDITION_FIELDS.add(field("remainDays", "距截止天数", "NUMBER", "GT", "GTE", "LT", "LTE"));
         CONDITION_FIELDS.add(field("overdueLevel", "超期等级", "NUMBER", "EQ", "GT", "GTE", "LT", "LTE"));
         CONDITION_FIELDS.add(field("deadlineDate", "截止日期", "DATE", "EQ", "GT", "GTE", "LT", "LTE"));
@@ -310,11 +314,30 @@ public class NotifyService {
         for (NotifyCondition c : sanitize(conds)) {
             String label = c.getField();
             for (ConditionFieldVO f : CONDITION_FIELDS) if (f.getCode().equals(c.getField())) { label = f.getLabel(); break; }
-            String v = ("IN".equals(c.getOp()) || "NOT_IN".equals(c.getOp()))
-                    ? String.join("/", c.getValues()) : c.getValue();
+            String v;
+            if ("IN".equals(c.getOp()) || "NOT_IN".equals(c.getOp())) {
+                List<String> vs = new ArrayList<>();
+                for (String x : c.getValues()) vs.add(optionLabel(c.getField(), x));
+                v = String.join("/", vs);
+            } else {
+                v = optionLabel(c.getField(), c.getValue());
+            }
             parts.add(label + " " + opLabel(c.getOp()) + " " + (v == null ? "" : v));
         }
         return parts.isEmpty() ? "全部案件" : String.join("；", parts);
+    }
+
+    /** 枚举字段的值转中文标签（规则文案更直观） */
+    private String optionLabel(String fieldCode, String value) {
+        if (value == null) return "";
+        for (ConditionFieldVO f : CONDITION_FIELDS) {
+            if (f.getCode().equals(fieldCode)) {
+                for (ConditionFieldVO.Option o : f.getOptions()) {
+                    if (o.getValue().equals(value)) return o.getLabel();
+                }
+            }
+        }
+        return value;
     }
 
     private String opLabel(String op) {
