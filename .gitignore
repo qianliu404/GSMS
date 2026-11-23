@@ -1,0 +1,38 @@
+# ===== 构建产物 =====
+node_modules/
+dist/
+target/
+*.jar
+*.class
+*.log
+
+# ===== 本地数据、备份与临时文件 =====
+data/
+backup/
+output/
+deploy/remote/out/
+deploy/remote/pack/
+deploy/shots/
+deploy/tmp/
+
+# ===== 内部工作记录与凭据 =====
+.workbuddy/
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example
+
+# ===== 一次性脱敏/探测工具（含历史口令字面量） =====
+deploy/sanitize_for_git.py
+deploy/remote/probe*.py
+deploy/remote/run_*.ps1
+
+# ===== 系统文件 =====
+Thumbs.db
+.DS_Store
+*.swp
+
+# Python 缓存
+__pycache__/
+*.pyc

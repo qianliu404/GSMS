@@ -1,0 +1,17 @@
+const { chromium } = require('playwright-core')
+const BASE='http://127.0.0.1:8080'
+;(async()=>{
+  const b=await chromium.launch({channel:'msedge',headless:true})
+  const p=await (await b.newContext({viewport:{width:1440,height:900}})).newPage()
+  const errs=[]; p.on('pageerror',e=>errs.push(e.message))
+  await p.goto(BASE+'/login',{waitUntil:'networkidle'})
+  await p.fill('input[placeholder="请输入工号或用户名"]','admin')
+  await p.fill('input[placeholder="请输入登录密码"]',process.env.GSMS_PASSWORD || '')
+  await p.click('button:has-text("登 录")'); await p.waitForTimeout(2000)
+  await p.goto(BASE+'/cases/341',{waitUntil:'networkidle'}); await p.waitForTimeout(1500)
+  console.log('detail head:',await p.locator('.detail-head .no').innerText())
+  console.log('archive 伤害日期:',await p.evaluate(()=>{const c=[...document.querySelectorAll('.arc>div')].find(x=>x.querySelector('.k')?.innerText.trim()==='伤害日期');return c?.querySelector('.v')?.innerText.trim()}))
+  console.log('关联卡片:',await p.locator('.card-head h2:has-text("争议关联案件")').count())
+  console.log('errors:',errs.length)
+  await b.close()
+})()

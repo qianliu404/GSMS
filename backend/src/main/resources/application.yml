@@ -1,0 +1,81 @@
+server:
+  # 注意：不使用 SERVER_PORT，避免与宿主环境同名变量冲突
+  port: ${APP_PORT:8089}
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: gsms
+  profiles:
+    active: ${PROFILE:local}
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+  servlet:
+    multipart:
+      # 与 Nginx client_max_body_size、前端预校验保持三处一致（页面清单 4.11）
+      max-file-size: 100MB
+      max-request-size: 100MB
+  mvc:
+    throw-exception-if-no-handler-found: true
+    # GET 查询参数里 LocalDate/LocalDateTime 的统一绑定格式。
+    # 不配置时 Spring 使用本地化短日期（如 11/3/26），前端传 yyyy-MM-dd 会绑定失败。
+    format:
+      date: yyyy-MM-dd
+      time: HH:mm:ss
+      date-time: yyyy-MM-dd HH:mm:ss
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.gsms.module
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    com.gsms: INFO
+  file:
+    name: ${LOG_PATH:E:/GSMS/data/logs}/gsms-backend.log
+  logback:
+    rollingpolicy:
+      max-history: 90
+      max-file-size: 50MB
+
+gsms:
+  audit:
+    # 审计日志保留年限，超期记录由定时任务自动删除（每天 02:30，启动时补做一次）
+    retention-years: ${AUDIT_RETENTION_YEARS:1}
+  jwt:
+    # 生产环境必须通过 JWT_SECRET 环境变量覆盖
+    secret: ${JWT_SECRET:gsms-local-dev-secret-key-please-override-in-production-32bytes}
+    expire-minutes: ${JWT_EXPIRE_MINUTES:480}
+  crypto:
+    # 敏感字段（身份证、金额）加密密钥，生产必须通过 CRYPTO_SECRET 覆盖
+    secret: ${CRYPTO_SECRET:gsms-local-crypto-secret-change-in-production}
+  storage:
+    root: ${STORAGE_ROOT:E:/GSMS/data/files}
+    temp: ${STORAGE_TEMP:E:/GSMS/data/tmp}
+  doc:
+    max-file-size-mb: 100
+    allowed-extensions: pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,zip,rar
+  web:
+    # 内网访问来源通配（局域网 IP 访问 Nginx 时浏览器会带 Origin，不在白名单会被拒成 403）
+    # 环回地址（服务器本机用 127.0.0.1:8081/localhost:8081 访问）端口不固定，按任意端口放行
+    allowed-origin-patterns: ${CORS_ORIGIN_PATTERNS:http://127.0.0.1:*,https://127.0.0.1:*,http://localhost:*,https://localhost:*,http://[::1]:*,http://192.168.*:*,https://192.168.*:*,http://10.*:*,https://10.*:*}

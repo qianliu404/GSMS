@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gsms.module.recycle.mapper.RecycleBinMapper">
+
+    <!-- ==================== 已删除案件 ==================== -->
+    <select id="pageDeletedCases" resultType="com.gsms.module.recycle.dto.RecycleItemVO">
+        SELECT c.id                AS id,
+               c.case_no           AS code,
+               c.case_name         AS title,
+               c.employee_name     AS subtitle,
+               c.case_type         AS tag,
+               u.user_name         AS ownerName,
+               c.update_time       AS deletedTime
+          FROM case_main c
+          LEFT JOIN sys_user u ON u.user_id = c.handler_id
+         WHERE c.deleted = 1
+        <if test="keyword != null and keyword != ''">
+            AND (c.case_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR c.case_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR c.employee_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+         ORDER BY c.update_time DESC
+         LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countDeletedCases" resultType="long">
+        SELECT COUNT(*)
+          FROM case_main c
+         WHERE c.deleted = 1
+        <if test="keyword != null and keyword != ''">
+            AND (c.case_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR c.case_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR c.employee_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+
+    <select id="selectDocumentPaths" resultType="string">
+        SELECT file_path FROM case_document WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <!-- 永久删除前的存在性校验：只认回收站内的记录，防止绕过软删除直接物理删库 -->
+    <select id="selectCaseNos" resultType="string">
+        SELECT case_no FROM case_main WHERE deleted = 1 AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <!-- ==================== 已删除用户 ==================== -->
+    <select id="pageDeletedUsers" resultType="com.gsms.module.recycle.dto.RecycleItemVO">
+        SELECT u.id            AS id,
+               u.user_id       AS code,
+               u.user_name     AS title,
+               d.dept_name     AS subtitle,
+               u.position      AS tag,
+               u.mobile        AS ownerName,
+               u.update_time   AS deletedTime
+          FROM sys_user u
+          LEFT JOIN sys_dept d ON d.id = u.dept_id
+         WHERE u.deleted = 1
+        <if test="keyword != null and keyword != ''">
+            AND (u.user_id LIKE CONCAT('%', #{keyword}, '%')
+                 OR u.user_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR u.mobile LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+         ORDER BY u.update_time DESC
+         LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countDeletedUsers" resultType="long">
+        SELECT COUNT(*)
+          FROM sys_user u
+         WHERE u.deleted = 1
+        <if test="keyword != null and keyword != ''">
+            AND (u.user_id LIKE CONCAT('%', #{keyword}, '%')
+                 OR u.user_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR u.mobile LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+
+    <select id="selectUserIds" resultType="string">
+        SELECT user_id FROM sys_user WHERE deleted = 1 AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <!-- ==================== 恢复 ==================== -->
+    <update id="restoreCases">
+        UPDATE case_main SET deleted = 0, update_time = NOW()
+         WHERE deleted = 1 AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
+
+    <update id="restoreUsers">
+        UPDATE sys_user SET deleted = 0, update_time = NOW()
+         WHERE deleted = 1 AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
+
+    <!-- ==================== 永久删除：案件 ==================== -->
+    <delete id="purgeCaseInjuryExt">
+        DELETE FROM case_injury_ext WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeCaseArbitrationExt">
+        DELETE FROM case_arbitration_ext WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeCaseMember">
+        DELETE FROM case_member WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeCaseStatusLog">
+        DELETE FROM case_status_log WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeCaseRelation">
+        DELETE FROM case_relation WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        OR related_case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeCaseDocument">
+        DELETE FROM case_document WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeDeadlineReminder">
+        DELETE FROM deadline_reminder WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeWfInstance">
+        DELETE FROM wf_instance WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeTask">
+        DELETE FROM task WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeCountersign">
+        DELETE FROM countersign WHERE case_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeNotification">
+        DELETE FROM notification WHERE biz_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="purgeCases">
+        DELETE FROM case_main WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <!-- ==================== 永久删除：用户 ==================== -->
+    <delete id="purgeUserRoleByUserIds">
+        DELETE FROM sys_user_role WHERE user_id IN
+        (SELECT user_id FROM sys_user WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        )
+    </delete>
+
+    <delete id="purgeUsers">
+        DELETE FROM sys_user WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+</mapper>

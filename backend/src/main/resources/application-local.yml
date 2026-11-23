@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # serverTimezone 必须显式指定：目标机为 China Standard Time，缺省会导致 create_time 偏移 8 小时
+    url: jdbc:mysql://127.0.0.1:3306/case_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+    username: ${DB_USER:case_app}
+    password: ${DB_PASSWORD}
+    hikari:
+      # 目标机 max_connections=151，连接池不宜过大，避免与同机其他库争用
+      maximum-pool-size: 20
+      minimum-idle: 4
+      connection-timeout: 10000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+logging:
+  level:
+    com.gsms: DEBUG

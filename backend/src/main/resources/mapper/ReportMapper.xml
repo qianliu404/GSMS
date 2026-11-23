@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gsms.module.report.mapper.ReportMapper">
+
+    <!-- 数据范围片段：ALL 全量；有 deptIds 走部门；否则走案件成员 -->
+    <sql id="caseScope">
+        <if test="!allScope">
+            <choose>
+                <when test="deptIds != null and deptIds.size() > 0">
+                    AND c.department_id IN
+                    <foreach collection="deptIds" item="d" open="(" separator="," close=")">#{d}</foreach>
+                </when>
+                <otherwise>
+                    AND EXISTS (SELECT 1 FROM case_member m WHERE m.case_id = c.id AND m.user_id = #{userId})
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <select id="countByType" resultType="java.util.LinkedHashMap">
+        SELECT c.case_type AS name, COUNT(*) AS value
+        FROM case_main c
+        WHERE c.deleted = 0
+        <include refid="caseScope"/>
+        GROUP BY c.case_type
+    </select>
+
+    <select id="countByStatus" resultType="java.util.LinkedHashMap">
+        SELECT c.status AS name, COUNT(*) AS value
+        FROM case_main c
+        WHERE c.deleted = 0
+        <include refid="caseScope"/>
+        GROUP BY c.status
+        ORDER BY value DESC
+    </select>
+
+    <select id="countByMonth" resultType="java.util.LinkedHashMap">
+        SELECT DATE_FORMAT(c.create_time, '%Y-%m') AS name, COUNT(*) AS value
+        FROM case_main c
+        WHERE c.deleted = 0
+          AND c.create_time &gt;= DATE_SUB(CURDATE(), INTERVAL #{months} MONTH)
+        <include refid="caseScope"/>
+        GROUP BY DATE_FORMAT(c.create_time, '%Y-%m')
+        ORDER BY name
+    </select>
+
+    <select id="sumInjuryAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(e.treatment_amount), 0)
+        FROM case_injury_ext e
+        JOIN case_main c ON c.id = e.case_id
+        WHERE c.deleted = 0
+        <include refid="caseScope"/>
+    </select>
+
+    <select id="sumAwardAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(e.award_amount), 0)
+        FROM case_arbitration_ext e
+        JOIN case_main c ON c.id = e.case_id
+        WHERE c.deleted = 0
+        <include refid="caseScope"/>
+    </select>
+
+    <select id="avgCloseDays" resultType="java.lang.Double">
+        SELECT AVG(DATEDIFF(c.close_date, c.occur_date))
+        FROM case_main c
+        WHERE c.deleted = 0
+          AND c.close_date IS NOT NULL
+        <include refid="caseScope"/>
+    </select>
+
+    <select id="deadlineStat" resultType="java.util.LinkedHashMap">
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(CASE WHEN d.status = 'OVERDUE' THEN 1 ELSE 0 END), 0) AS overdue,
+               COALESCE(SUM(CASE WHEN d.status = 'DONE' THEN 1 ELSE 0 END), 0) AS done
+        FROM deadline_reminder d
+        JOIN case_main c ON c.id = d.case_id
+        WHERE c.deleted = 0
+        <include refid="caseScope"/>
+    </select>
+
+    <select id="taskStat" resultType="java.util.LinkedHashMap">
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(CASE WHEN t.status = 'DONE' THEN 1 ELSE 0 END), 0) AS done,
+               COALESCE(SUM(CASE WHEN t.status = 'PENDING' AND t.deadline &lt; NOW() THEN 1 ELSE 0 END), 0) AS overdue
+        FROM task t
+        JOIN case_main c ON c.id = t.case_id
+        WHERE t.deleted = 0
+        <include refid="caseScope"/>
+    </select>
+
+    <select id="countByTypeAndStatus" resultType="java.util.LinkedHashMap">
+        SELECT c.case_type AS caseType, c.status AS status, COUNT(*) AS value
+        FROM case_main c
+        WHERE c.deleted = 0
+        <include refid="caseScope"/>
+        GROUP BY c.case_type, c.status
+    </select>
+
+    <select id="countClosedThisYear" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM case_main c
+        WHERE c.deleted = 0
+          AND c.close_date IS NOT NULL
+          AND c.close_date &gt;= MAKEDATE(YEAR(CURDATE()), 1)
+        <include refid="caseScope"/>
+    </select>
+
+    <select id="urgentDeadlines" resultType="java.util.LinkedHashMap">
+        SELECT d.id AS id, d.case_id AS caseId, c.case_no AS caseNo, c.employee_name AS employeeName,
+               d.node_name AS nodeName, d.deadline_date AS deadlineDate, d.status AS status,
+               c.handler_id AS handlerId, c.status AS caseStatus, c.case_type AS caseType
+        FROM deadline_reminder d
+        JOIN case_main c ON c.id = d.case_id
+        WHERE c.deleted = 0
+          AND d.status &lt;&gt; 'DONE'
+        <include refid="caseScope"/>
+        ORDER BY d.deadline_date ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 台账统计卡：一次聚合出全部指标，避免把案件整表捞进内存再计数 -->
+    <select id="ledgerSummary" resultType="java.util.LinkedHashMap">
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(CASE WHEN c.case_type = 'INJURY' THEN 1 ELSE 0 END), 0) AS injuryCount,
+               COALESCE(SUM(CASE WHEN c.case_type = 'ARBITRATION' THEN 1 ELSE 0 END), 0) AS arbitrationCount,
+               COUNT(DISTINCT CASE WHEN c.plant_area IS NOT NULL AND TRIM(c.plant_area) &lt;&gt; ''
+                                   THEN c.plant_area END) AS areaCount,
+               COALESCE(SUM(CASE WHEN e.case_id IS NOT NULL
+                                  AND (e.recognize_result IS NULL
+                                       OR e.recognize_result IN ('NOT_DECLARED', 'DECLARING'))
+                                 THEN 1 ELSE 0 END), 0) AS waitRecognize,
+               COALESCE(SUM(CASE WHEN e.case_id IS NOT NULL
+                                  AND (e.appraisal_level IS NULL OR TRIM(e.appraisal_level) = ''
+                                       OR e.appraisal_level = '—')
+                                 THEN 1 ELSE 0 END), 0) AS waitAppraisal,
+               COALESCE(SUM(CASE WHEN e.case_id IS NOT NULL
+                                  AND (COALESCE(e.subsidy_disability_status, '') &lt;&gt; 'RECEIVED'
+                                       OR COALESCE(e.subsidy_medical_status, '') &lt;&gt; 'RECEIVED'
+                                       OR COALESCE(e.subsidy_employment_status, '') &lt;&gt; 'RECEIVED')
+                                 THEN 1 ELSE 0 END), 0) AS unpaid
+        FROM case_main c
+        LEFT JOIN case_injury_ext e ON e.case_id = c.id
+        WHERE c.deleted = 0
+          AND c.case_type IN ('INJURY', 'ARBITRATION')
+        <include refid="caseScope"/>
+    </select>
+
+</mapper>
