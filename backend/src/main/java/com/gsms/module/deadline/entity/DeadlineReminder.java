@@ -31,6 +31,12 @@ public class DeadlineReminder {
     @TableField(updateStrategy = FieldStrategy.IGNORED)
     private LocalDate manualDate;
     /**
+     * 本节点办理日期：进入节点时默认当天，可修改；截止日期按该日期 + 节点时限（工作日）推算。
+     * 清空时沿用旧口径（案件发生日期）以兼容历史数据。
+     */
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
+    private LocalDate handleDate;
+    /**
      * 节点开始计时时间：承办人点击「提交」开启当前节点后写入。
      *
      * 为空表示节点尚未开启，此时只展示截止日期，不参与超期/临近超期判定；

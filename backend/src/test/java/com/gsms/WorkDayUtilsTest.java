@@ -1,9 +1,11 @@
 package com.gsms;
 
 import com.gsms.common.WorkDayUtils;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -12,6 +14,29 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * 节点截止日期的工作日推算：周末顺延、非数值时限不设截止日。
  */
 class WorkDayUtilsTest {
+
+    @BeforeEach
+    void setUpHolidays() {
+        // 国务院办公厅 2026 年安排节选：国庆 10-01~10-07 放假，10-10（周六）调休上班；春节 2-14 调休上班
+        WorkDayUtils.configure(
+                Arrays.asList("2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04",
+                        "2026-10-05", "2026-10-06", "2026-10-07"),
+                Arrays.asList("2026-10-10", "2026-02-14"));
+    }
+
+    @Test
+    void nationalDayHolidaysAreNotWorkingDays() {
+        assertEquals(LocalDate.of(2026, 10, 8),
+                WorkDayUtils.plusWorkingDays(LocalDate.of(2026, 9, 30), 1));
+    }
+
+    @Test
+    void makeupWeekendIsWorkingDay() {
+        assertEquals(LocalDate.of(2026, 10, 10),
+                WorkDayUtils.plusWorkingDays(LocalDate.of(2026, 10, 9), 1));
+        assertEquals(LocalDate.of(2026, 2, 14),
+                WorkDayUtils.plusWorkingDays(LocalDate.of(2026, 2, 13), 1));
+    }
 
     @Test
     void plusWorkingDaysSkipsWeekend() {

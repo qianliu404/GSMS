@@ -76,7 +76,8 @@ public class CaseController {
         return R.ok(caseService.adjustNodeDeadline(id,
                 body == null ? null : body.get("nodeCode"),
                 body == null ? null : body.get("deadlineDate"),
-                body == null ? null : body.get("reason")));
+                body == null ? null : body.get("reason"),
+                body == null ? null : body.get("handleDate")));
     }
 
     /** 提交开启当前节点：开启后才按截止日期判断是否超期 */

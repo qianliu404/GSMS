@@ -194,6 +194,7 @@ CREATE TABLE deadline_reminder (
   deadline_type     VARCHAR(20)  NOT NULL COMMENT 'LEGAL法定/INTERNAL内部',
   deadline_date     DATE         NOT NULL COMMENT '截止日期',
   manual_date       DATE         DEFAULT NULL COMMENT '人工调整后的截止日期，为空表示按节点时限自动推算',
+  handle_date       DATE         DEFAULT NULL COMMENT '本节点办理日期（默认当天，可修改），截止日期据此推算',
   start_time        DATETIME     DEFAULT NULL COMMENT '节点开始计时时间（点击提交开启），为空表示未开启',
   remind_days       INT          NOT NULL DEFAULT 3 COMMENT '提前提醒天数',
   status            VARCHAR(20)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/REMINDED/OVERDUE/DONE',

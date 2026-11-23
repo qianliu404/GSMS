@@ -107,9 +107,9 @@ public class DeadlineService {
      * 进入流程节点：按节点时限（工作日）生成/刷新该节点的期限记录。
      *
      * 时限取「流程节点配置」里的 time_limit（如「10 天」），「视情况」「—」不建记录。
-     * 起算日统一取案件「发生日期」（未填时退回建档时间），与立案时登记的日期一致，
-     * 而不是进入节点当天——否则存量案件没有流转记录就算不出截止日期。
-     * 同一案件同一节点只保留一条：退回重办时按起算日重算并清掉人工调整值。
+     * 起算日取本节点「办理日期」：进入节点时默认当天，用户可在案件详情修改；历史数据
+     * 未记录办理日期时仍按案件发生日期推算。法定节假日不计入，调休上班的周末计入。
+     * 同一案件同一节点只保留一条：退回重办时按新的办理日期重算并清掉人工调整值。
      */
     @Transactional(rollbackFor = Exception.class)
     public void enterNode(CaseMain caseMain, String statusCode) {
@@ -127,7 +127,8 @@ public class DeadlineService {
         if (days == null) {
             return;
         }
-        LocalDate dueDate = WorkDayUtils.plusWorkingDays(baseDate(caseMain), days);
+        LocalDate handleDate = LocalDate.now();
+        LocalDate dueDate = WorkDayUtils.plusWorkingDays(handleDate, days);
         String deadlineType = LEGAL_NODES.contains(statusCode) ? "LEGAL" : "INTERNAL";
 
         DeadlineReminder existing = deadlineMapper.selectOne(new LambdaQueryWrapper<DeadlineReminder>()
@@ -140,6 +141,7 @@ public class DeadlineService {
             existing.setDeadlineType(deadlineType);
             existing.setDeadlineDate(dueDate);
             existing.setManualDate(null);
+            existing.setHandleDate(handleDate);
             // 重新进入节点（含退回重办）视为未开启，需再次「提交」才开始计时
             existing.setStartTime(null);
             existing.setRemindDays(REMIND_DAYS);
@@ -155,6 +157,7 @@ public class DeadlineService {
         entity.setNodeName(node.getNodeName());
         entity.setDeadlineType(deadlineType);
         entity.setDeadlineDate(dueDate);
+        entity.setHandleDate(handleDate);
         entity.setRemindDays(REMIND_DAYS);
         entity.setStatus("PENDING");
         entity.setHandlerId(caseMain.getHandlerId());
@@ -405,10 +408,20 @@ public class DeadlineService {
      * 与自动推算值一致时清空 manual_date 回到自动口径；不一致则落 manual_date，
      * 后续详情页、期限中心、提醒扫描都以人工值为准。
      */
-    @Transactional(rollbackFor = Exception.class)
     public CaseDetailVO.NodeDeadlineVO adjustDeadline(Long caseId, String nodeCode, LocalDate deadlineDate, String reason) {
-        if (deadlineDate == null) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "请选择截止日期");
+        return adjustDeadline(caseId, nodeCode, deadlineDate, reason, null);
+    }
+
+    /**
+     * 调整办理日期或截止日期。
+     * 传入 handleDate 时按「办理日期 + 节点时限（工作日，含节假日）」重算截止日期并清除人工调整；
+     * 仅传 deadlineDate 时维持原有人工调整口径。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public CaseDetailVO.NodeDeadlineVO adjustDeadline(Long caseId, String nodeCode, LocalDate deadlineDate,
+                                                       String reason, LocalDate handleDate) {
+        if (deadlineDate == null && handleDate == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "请选择办理日期或截止日期");
         }
         CaseMain caseMain = caseMainMapper.selectById(caseId);
         if (caseMain == null) {
@@ -421,8 +434,11 @@ public class DeadlineService {
                 .last("LIMIT 1"));
         String nodeName = node != null ? node.getNodeName() : CaseDict.statusName(code);
         Integer days = node == null ? null : WorkDayUtils.parseDays(node.getTimeLimit());
-        LocalDate base = baseDate(caseMain);
+        LocalDate base = handleDate != null ? handleDate : baseDate(caseMain);
         LocalDate autoDate = days == null ? null : WorkDayUtils.plusWorkingDays(base, days);
+        if (handleDate != null && autoDate != null) {
+            deadlineDate = autoDate;
+        }
 
         DeadlineReminder entity = deadlineMapper.selectOne(new LambdaQueryWrapper<DeadlineReminder>()
                 .eq(DeadlineReminder::getCaseId, caseId)
@@ -441,8 +457,14 @@ public class DeadlineService {
         entity.setNodeName(nodeName);
         entity.setDeadlineType(LEGAL_NODES.contains(code) ? "LEGAL" : "INTERNAL");
         entity.setDeadlineDate(deadlineDate);
-        // 与自动值相同就不算人工调整，退回重办时按规则重算即可
-        entity.setManualDate(autoDate != null && autoDate.equals(deadlineDate) ? null : deadlineDate);
+        if (handleDate != null) {
+            // 改办理日期后截止日期完全按规则重算，不再保留旧的手动调整
+            entity.setHandleDate(handleDate);
+            entity.setManualDate(null);
+        } else {
+            // 与自动值相同就不算人工调整，退回重办时按规则重算即可
+            entity.setManualDate(autoDate != null && autoDate.equals(deadlineDate) ? null : deadlineDate);
+        }
         entity.setRemindDays(REMIND_DAYS);
         // 未开启的节点改期只影响截止日期，不提前判超期
         if (!"DONE".equals(entity.getStatus())) {
@@ -455,9 +477,14 @@ public class DeadlineService {
         } else {
             deadlineMapper.updateById(entity);
         }
-        auditService.success("案件详情", "调整截止日期", String.valueOf(caseId),
-                String.format("%s 截止日期调整为 %s%s", nodeName, deadlineDate,
-                        StringUtils.hasText(reason) ? "（" + reason + "）" : ""));
+        String auditText = handleDate != null
+                ? String.format("%s 办理日期调整为 %s，截止日期重算为 %s", nodeName, handleDate, deadlineDate)
+                : String.format("%s 截止日期调整为 %s", nodeName, deadlineDate);
+        if (StringUtils.hasText(reason)) {
+            auditText += "（" + reason + "）";
+        }
+        auditService.success("案件详情", handleDate != null ? "调整办理日期" : "调整截止日期",
+                String.valueOf(caseId), auditText);
 
         return buildNodeVO(entity, base, autoDate);
     }
@@ -535,6 +562,7 @@ public class DeadlineService {
         vo.setStatusCode(entity.getNodeCode());
         vo.setNodeName(entity.getNodeName());
         vo.setEnterDate(base);
+        vo.setHandleDate(entity.getHandleDate());
         vo.setAutoDate(autoDate);
         vo.setDeadlineDate(entity.getDeadlineDate());
         vo.setManual(entity.getManualDate() != null);
@@ -573,6 +601,21 @@ public class DeadlineService {
         Map<String, LocalDate> map = new HashMap<>();
         for (DeadlineReminder item : list) {
             map.put(item.getNodeCode(), item.getManualDate());
+        }
+        return map;
+    }
+
+    /** 各节点办理日期（nodeCode → handleDate），用于详情页按办理日期推算截止日期 */
+    public Map<String, LocalDate> handleDates(Long caseId) {
+        if (caseId == null) {
+            return Collections.emptyMap();
+        }
+        List<DeadlineReminder> list = deadlineMapper.selectList(new LambdaQueryWrapper<DeadlineReminder>()
+                .eq(DeadlineReminder::getCaseId, caseId)
+                .isNotNull(DeadlineReminder::getHandleDate));
+        Map<String, LocalDate> map = new HashMap<>();
+        for (DeadlineReminder item : list) {
+            map.put(item.getNodeCode(), item.getHandleDate());
         }
         return map;
     }

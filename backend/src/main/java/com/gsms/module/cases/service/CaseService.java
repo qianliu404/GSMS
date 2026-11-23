@@ -722,7 +722,8 @@ public class CaseService {
             DeadlineReminder currentRow = currentRows.get(entity.getId());
             Integer days = currentNode == null ? null : WorkDayUtils.parseDays(currentNode.getTimeLimit());
             LocalDate autoDate = days == null ? null
-                    : WorkDayUtils.plusWorkingDays(DeadlineService.baseDate(entity), days);
+                    : WorkDayUtils.plusWorkingDays(currentRow != null && currentRow.getHandleDate() != null
+                            ? currentRow.getHandleDate() : DeadlineService.baseDate(entity), days);
             LocalDate manualDate = currentRow == null ? null : currentRow.getManualDate();
             vo.setCurrentDeadline(manualDate != null ? manualDate : autoDate);
             vo.setDeadlineStarted(currentRow != null && currentRow.getStartTime() != null);
@@ -957,6 +958,7 @@ public class CaseService {
             return Collections.emptyList();
         }
         Map<String, LocalDate> manualDates = deadlineService.manualDates(entity.getId());
+        Map<String, LocalDate> handleDates = deadlineService.handleDates(entity.getId());
         Map<String, LocalDateTime> startedAt = deadlineService.startedAt(entity.getId());
         // 起算日：发生日期，缺省退回建档时间
         LocalDate base = DeadlineService.baseDate(entity);
@@ -981,7 +983,9 @@ public class CaseService {
             if (days == null && manual == null) {
                 continue;
             }
-            LocalDate autoDate = days == null ? null : WorkDayUtils.plusWorkingDays(base, days);
+            LocalDate handleDate = handleDates.get(node.getStatusCode());
+            LocalDate nodeBase = handleDate != null ? handleDate : base;
+            LocalDate autoDate = days == null ? null : WorkDayUtils.plusWorkingDays(nodeBase, days);
             LocalDate deadline = manual != null ? manual : autoDate;
             if (deadline == null) {
                 continue;
@@ -990,7 +994,8 @@ public class CaseService {
             CaseDetailVO.NodeDeadlineVO vo = new CaseDetailVO.NodeDeadlineVO();
             vo.setStatusCode(node.getStatusCode());
             vo.setNodeName(node.getNodeName());
-            vo.setEnterDate(base);
+            vo.setEnterDate(nodeBase);
+            vo.setHandleDate(handleDate);
             vo.setAutoDate(autoDate);
             vo.setDeadlineDate(deadline);
             vo.setManual(manual != null);
@@ -1199,17 +1204,36 @@ public class CaseService {
      * 默认按「发生日期 + 节点时限（工作日）」自动推算，这里允许承办人按实际情况改写，
      * 调整后详情页、期限中心与提醒扫描都以人工值为准。
      */
-    @Transactional(rollbackFor = Exception.class)
     public CaseDetailVO.NodeDeadlineVO adjustNodeDeadline(Long id, String nodeCode, String deadlineDate, String reason) {
+        return adjustNodeDeadline(id, nodeCode, deadlineDate, reason, null);
+    }
+
+    /** 调整当前节点办理日期或截止日期；办理日期变更时按规则重算截止日期 */
+    @Transactional(rollbackFor = Exception.class)
+    public CaseDetailVO.NodeDeadlineVO adjustNodeDeadline(Long id, String nodeCode, String deadlineDate,
+                                                           String reason, String handleDate) {
         CaseMain entity = loadCase(id);
         assertEditable(entity);
-        LocalDate date;
-        try {
-            date = LocalDate.parse(deadlineDate);
-        } catch (Exception e) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "截止日期格式应为 yyyy-MM-dd");
+        LocalDate handle = null;
+        if (StringUtils.hasText(handleDate)) {
+            try {
+                handle = LocalDate.parse(handleDate);
+            } catch (Exception e) {
+                throw new BizException(ErrorCode.PARAM_INVALID, "办理日期格式应为 yyyy-MM-dd");
+            }
         }
-        return deadlineService.adjustDeadline(entity.getId(), nodeCode, date, reason);
+        LocalDate date = null;
+        if (StringUtils.hasText(deadlineDate)) {
+            try {
+                date = LocalDate.parse(deadlineDate);
+            } catch (Exception e) {
+                throw new BizException(ErrorCode.PARAM_INVALID, "截止日期格式应为 yyyy-MM-dd");
+            }
+        }
+        if (date == null && handle == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "请选择办理日期或截止日期");
+        }
+        return deadlineService.adjustDeadline(entity.getId(), nodeCode, date, reason, handle);
     }
 
     /** 开启当前节点计时：提交后该节点才按截止日期判断超期 */

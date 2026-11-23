@@ -56,8 +56,10 @@ public class CaseDetailVO extends CaseVO {
         private String statusCode;
         private String nodeName;
         private LocalDate enterDate;
+        /** 本节点办理日期，默认进入节点当天，可修改 */
+        private LocalDate handleDate;
         private LocalDate deadlineDate;
-        /** 按「发生日期 + 节点时限」推算的应到日期，用于提示人工调整偏差 */
+        /** 按「办理日期 + 节点时限」推算的应到日期，用于提示人工调整偏差 */
         private LocalDate autoDate;
         /** 是否人工调整过截止日期 */
         private boolean manual;

@@ -17,6 +17,14 @@ public class GsmsProperties {
     private Doc doc = new Doc();
     private Crypto crypto = new Crypto();
     private Web web = new Web();
+    private Calendar calendar = new Calendar();
+
+    /** 法定节假日与调休工作日，由 application.yml 注入，可由环境变量覆盖 */
+    @Data
+    public static class Calendar {
+        private List<String> holidays = Arrays.asList();
+        private List<String> makeupWorkdays = Arrays.asList();
+    }
 
     @Data
     public static class Web {

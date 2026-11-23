@@ -128,7 +128,23 @@
                   />
                 </div>
               </el-form-item>
-              <!-- 截止日期：按节点时限自动推算，允许人工调整（如与当事人约定、法定节假日顺延） -->
+              <!-- 办理日期：默认当天，可修改；截止日期按该日期 + 节点时限（工作日，含节假日）推算 -->
+              <el-form-item label="办理日期">
+                <div class="node-result">
+                  <el-date-picker
+                    v-model="handleDateInput"
+                    type="date"
+                    value-format="YYYY-MM-DD"
+                    :clearable="false"
+                    :disabled="detail.archiveStatus === 1"
+                    :loading="deadlineSaving"
+                    style="width: 200px"
+                    @change="saveHandleDate"
+                  />
+                  <span class="hint">截止日期按办理日期加节点时限计算，法定节假日不计入工作日</span>
+                </div>
+              </el-form-item>
+              <!-- 截止日期：按办理日期 + 节点时限自动推算，允许人工调整（如与当事人约定） -->
               <el-form-item label="截止日期">
                 <div class="node-result">
                   <el-date-picker
@@ -1234,7 +1250,15 @@ function nodeDueClass(node, index) {
   return { 'due-soon': dl.state === 'DUE_SOON', overdue: dl.state === 'OVERDUE' }
 }
 
-/* ------------------ 截止日期（可人工调整） ------------------ */
+/* ------------------ 办理日期与截止日期 ------------------ */
+/** 办理区里可编辑的办理日期，默认当天；修改后由后端重算截止日期 */
+const handleDateInput = ref('')
+
+function todayStr() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** 办理区里可编辑的截止日期，默认取后端按时限算出的值 */
 const deadlineInput = ref('')
 const deadlineSaving = ref(false)
@@ -1276,7 +1300,36 @@ function syncDeadlineInput() {
   if (next !== deadlineInput.value) deadlineInput.value = next
 }
 
-watch([() => detail.value.status, () => detail.value.nodeDeadlines], syncDeadlineInput, { immediate: true, deep: true })
+/** 详情刷新或节点切换后同步办理日期；历史节点没有办理日期时默认显示当天 */
+function syncHandleDateInput() {
+  const dl = nodeDeadlineMap.value[detail.value.status]
+  const next = dl?.handleDate || todayStr()
+  if (next !== handleDateInput.value) handleDateInput.value = next
+}
+
+watch([() => detail.value.status, () => detail.value.nodeDeadlines], () => {
+  syncDeadlineInput()
+  syncHandleDateInput()
+}, { immediate: true, deep: true })
+
+/** 保存办理日期：后端按「办理日期 + 节点时限（工作日，含节假日）」重算截止日期 */
+async function saveHandleDate(value) {
+  if (!value) return
+  deadlineSaving.value = true
+  try {
+    const res = await caseApi.adjustDeadline(caseId, {
+      nodeCode: detail.value.status,
+      handleDate: value
+    })
+    patchLocalDeadline(res)
+    ElMessage.success(`办理日期已更新为 ${value}，截止日期已重算`)
+  } catch (e) {
+    handleDateInput.value = nodeDeadlineMap.value[detail.value.status]?.handleDate || todayStr()
+    throw e
+  } finally {
+    deadlineSaving.value = false
+  }
+}
 
 /** 保存人工调整的截止日期：只改当前节点的期限，不影响其他节点 */
 async function saveDeadline(value) {
