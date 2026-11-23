@@ -28,7 +28,7 @@
 
         <el-form ref="formRef" :model="form" :rules="rules" label-position="top" :hide-required-asterisk="true" @submit.prevent>
           <el-form-item label="工号 / 用户名" prop="userId">
-            <el-input v-model="form.userId" placeholder="请输入工号或用户名" clearable autocomplete="username" :prefix-icon="User" />
+            <el-input v-model="form.userId" placeholder="请输入工号或用户名" clearable autocomplete="username" :prefix-icon="User" @input="errorTip = ''" />
           </el-form-item>
           <el-form-item label="登录密码" prop="password">
             <el-input
@@ -38,10 +38,13 @@
               show-password
               autocomplete="current-password"
               :prefix-icon="Lock"
+              @input="errorTip = ''"
               @keyup.enter="onSubmit"
             />
           </el-form-item>
         </el-form>
+
+        <p v-if="errorTip" class="error-tip" role="alert">{{ errorTip }}</p>
 
         <div class="opts">
           <el-checkbox v-model="remember">记住登录状态</el-checkbox>
@@ -66,6 +69,7 @@ const store = useUserStore()
 
 const formRef = ref()
 const loading = ref(false)
+const errorTip = ref('')
 const remember = ref(localStorage.getItem('gsms-login-remember') !== '0')
 const form = reactive({ userId: '', password: '' })
 
@@ -88,13 +92,22 @@ async function onSubmit() {
   if (!valid) return
   loading.value = true
   try {
+    errorTip.value = ''
     await store.login({ userId: form.userId, password: form.password })
     saveRemember()
     ElMessage.success('登录成功')
     const redirect = route.query.redirect || '/dashboard'
     router.replace(redirect)
   } catch (e) {
-    /* 错误提示已由拦截器统一处理 */
+    const msg = (e && e.message) || ''
+    if (msg.includes('停用')) {
+      errorTip.value = '账号已停用，请联系系统管理员'
+    } else if (msg.includes('密码') || msg.includes('登录名')) {
+      errorTip.value = '账号或密码不正确，请检查后重新输入'
+    } else {
+      errorTip.value = msg || '登录失败，请稍后重试'
+    }
+    form.password = ''
   } finally {
     loading.value = false
   }
@@ -278,6 +291,16 @@ h2 {
 
 .panel :deep(.el-input__inner) {
   font-size: 13.5px;
+}
+
+.error-tip {
+  margin: -4px 0 10px;
+  padding: 7px 10px;
+  color: #c0392b;
+  background: #fdf0ee;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .opts {
