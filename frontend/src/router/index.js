@@ -115,6 +115,12 @@ const routes = [
         name: 'system-audit',
         component: () => import('../views/SystemAudit.vue'),
         meta: { title: '审计日志' }
+      },
+      {
+        path: 'system/notify',
+        name: 'system-notify',
+        component: () => import('../views/SystemNotify.vue'),
+        meta: { title: '推送设置' }
       }
     ]
   },

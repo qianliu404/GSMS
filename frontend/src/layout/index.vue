@@ -144,6 +144,7 @@ const GROUP_OF = {
   ARCHIVE_LIB: '支撑',
   RECYCLE_BIN: '支撑',
   'P-SYS-04': '支撑',
+  'P-SYS-05': '支撑',
   'P-SYS-02': '支撑',
   'P-SYS-01': '支撑',
   'P-SYS-03': '支撑',

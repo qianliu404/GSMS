@@ -141,6 +141,21 @@ export const systemApi = {
   removeDictItem: (type, id) => http.delete(`/dicts/${type}/items/${id}`)
 }
 
+/** 推送设置：周期配置、预览、测试推送、历史 */
+export const notifyApi = {
+  configs: () => http.get('/notify/configs'),
+  get: (id) => http.get(`/notify/configs/${id}`),
+  create: (data) => http.post('/notify/configs', data),
+  update: (id, data) => http.put(`/notify/configs/${id}`, data),
+  remove: (id) => http.delete(`/notify/configs/${id}`),
+  toggle: (id, enabled) => http.put(`/notify/configs/${id}/enabled`, { enabled }),
+  preview: (data) => http.post('/notify/preview', data),
+  previewById: (id) => http.get(`/notify/configs/${id}/preview`),
+  test: (id) => http.post(`/notify/configs/${id}/test`),
+  pushAll: () => http.post('/notify/push-all'),
+  history: () => http.get('/notify/history')
+}
+
 export const recycleApi = {
   page: (params) => http.get('/recycle-bin', { params }),
   restore: (target, ids) => http.post('/recycle-bin/restore', { target, ids }),
