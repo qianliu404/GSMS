@@ -40,3 +40,6 @@ __pycache__/
 # 一次性部署脚本（含环境专有参数）
 deploy/remote/step12_handle_date.ps1
 deploy/remote/step13_fixservice.ps1
+
+# 企业微信通知本地配置（含 webhook key 与 DB 口令）
+C:/GSMS/config/
