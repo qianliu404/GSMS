@@ -28,7 +28,7 @@
 
         <el-form ref="formRef" :model="form" :rules="rules" label-position="top" :hide-required-asterisk="true" @submit.prevent>
           <el-form-item label="工号 / 用户名" prop="userId">
-            <el-input v-model="form.userId" placeholder="请输入工号或用户名" clearable autocomplete="off" :prefix-icon="User" />
+            <el-input v-model="form.userId" placeholder="请输入工号或用户名" clearable autocomplete="username" :prefix-icon="User" />
           </el-form-item>
           <el-form-item label="登录密码" prop="password">
             <el-input
@@ -36,7 +36,7 @@
               type="password"
               placeholder="请输入登录密码"
               show-password
-              autocomplete="new-password"
+              autocomplete="current-password"
               :prefix-icon="Lock"
               @keyup.enter="onSubmit"
             />
