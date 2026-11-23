@@ -36,3 +36,7 @@ Thumbs.db
 # Python 缓存
 __pycache__/
 *.pyc
+
+# 一次性部署脚本（含环境专有参数）
+deploy/remote/step12_handle_date.ps1
+deploy/remote/step13_fixservice.ps1
