@@ -1,5 +1,6 @@
 package com.gsms.module.notify.mapper;
 
+import com.gsms.module.notify.dto.NotifyCondition;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -33,4 +34,7 @@ public interface NotifyQueryMapper {
     List<Map<String, Object>> selectMatches(@Param("today") LocalDate today,
                                             @Param("limit") LocalDate limit,
                                             @Param("includeOverdue") boolean includeOverdue);
+
+    /** 按自定义条件查询（条件字段与操作符均为白名单，值参数绑定） */
+    List<Map<String, Object>> selectByConditions(@Param("conditions") List<NotifyCondition> conditions);
 }

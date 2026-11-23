@@ -29,6 +29,8 @@ public class NotifyConfig {
     private Integer includeOverdue;
     /** 逗号分隔的字段编码 */
     private String fields;
+    /** 自定义推送条件（JSON 数组），为空时使用默认条件 */
+    private String conditions;
     private String webhook;
     private String remark;
     private LocalDateTime createTime;

@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gsms.common.BizException;
 import com.gsms.common.ErrorCode;
+import com.gsms.module.notify.dto.ConditionFieldVO;
+import com.gsms.module.notify.dto.NotifyCondition;
 import com.gsms.module.notify.dto.NotifyPreviewVO;
 import com.gsms.module.notify.entity.NotifyConfig;
 import com.gsms.module.notify.entity.NotifyHistory;
@@ -20,11 +22,11 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * 推送设置核心：配置管理、消息预览、定时推送。
@@ -45,23 +47,91 @@ public class NotifyService {
         FIELD_LABELS.put("remainDays", "剩余天数");
         FIELD_LABELS.put("handlerName", "办理人");
         FIELD_LABELS.put("deadlineTypeName", "期限类型");
+        FIELD_LABELS.put("employeeName", "当事人");
+        FIELD_LABELS.put("deptName", "责任部门");
+        FIELD_LABELS.put("plantArea", "厂区");
+        FIELD_LABELS.put("workshopTeam", "车间班组");
+        FIELD_LABELS.put("occurDate", "发生日期");
+        FIELD_LABELS.put("statusName", "期限状态");
     }
     public static final String DEFAULT_FIELDS = "caseNo,caseName,nodeName,deadlineDate,remainDays,handlerName";
+
+    /** 条件字段元数据——新增条件只需在此加一条 + NotifyQueryMapper.xml 的 choose 分支 */
+    public static final List<ConditionFieldVO> CONDITION_FIELDS = new ArrayList<>();
+    static {
+        CONDITION_FIELDS.add(field("caseNo", "案号", "TEXT", "EQ", "NE", "CONTAINS"));
+        ConditionFieldVO caseType = field("caseType", "案件类型", "ENUM", "EQ", "NE", "IN", "NOT_IN");
+        caseType.getOptions().add(new ConditionFieldVO.Option("INJURY", "工伤"));
+        caseType.getOptions().add(new ConditionFieldVO.Option("ARBITRATION", "劳动仲裁"));
+        ConditionFieldVO status = field("status", "案件状态", "ENUM", "EQ", "NE", "IN", "NOT_IN");
+        String[][] statuses = {
+                {"DRAFT", "草稿"}, {"FILED", "立案"}, {"INVESTIGATION", "调查取证"},
+                {"APPRAISAL", "鉴定"}, {"DECLARE", "申报"}, {"RECOGNITION", "认定"},
+                {"ARBITRATION", "仲裁"}, {"LITIGATION", "诉讼"}, {"PERFORM", "履行"},
+                {"CLOSED", "结案"}
+        };
+        for (String[] s : statuses) status.getOptions().add(new ConditionFieldVO.Option(s[0], s[1]));
+        CONDITION_FIELDS.add(caseType);
+        CONDITION_FIELDS.add(status);
+        CONDITION_FIELDS.add(field("nodeCode", "当前节点编码", "ENUM", "EQ", "NE", "IN", "NOT_IN"));
+        CONDITION_FIELDS.add(field("nodeName", "当前节点名称", "TEXT", "EQ", "CONTAINS"));
+        ConditionFieldVO dtype = field("deadlineType", "期限类型", "ENUM", "EQ", "NE", "IN", "NOT_IN");
+        dtype.getOptions().add(new ConditionFieldVO.Option("LEGAL", "法定"));
+        dtype.getOptions().add(new ConditionFieldVO.Option("INTERNAL", "内部"));
+        CONDITION_FIELDS.add(dtype);
+        CONDITION_FIELDS.add(field("handlerId", "承办人工号", "USER", "EQ", "IN", "NOT_IN", "IS_EMPTY", "NOT_EMPTY"));
+        CONDITION_FIELDS.add(field("handlerName", "承办人姓名", "TEXT", "EQ", "CONTAINS"));
+        CONDITION_FIELDS.add(field("deptName", "责任部门", "TEXT", "EQ", "CONTAINS"));
+        CONDITION_FIELDS.add(field("plantArea", "厂区", "TEXT", "EQ", "NE", "CONTAINS", "IS_EMPTY", "NOT_EMPTY"));
+        CONDITION_FIELDS.add(field("workshopTeam", "车间班组", "TEXT", "EQ", "CONTAINS"));
+        CONDITION_FIELDS.add(field("remainDays", "距截止天数", "NUMBER", "GT", "GTE", "LT", "LTE"));
+        CONDITION_FIELDS.add(field("overdueLevel", "超期等级", "NUMBER", "EQ", "GT", "GTE", "LT", "LTE"));
+        CONDITION_FIELDS.add(field("deadlineDate", "截止日期", "DATE", "EQ", "GT", "GTE", "LT", "LTE"));
+        CONDITION_FIELDS.add(field("occurDate", "发生日期", "DATE", "EQ", "GT", "GTE", "LT", "LTE"));
+    }
+
+    private static ConditionFieldVO field(String code, String label, String type, String... ops) {
+        ConditionFieldVO f = new ConditionFieldVO();
+        f.setCode(code); f.setLabel(label); f.setType(type);
+        f.setOperators(Arrays.asList(ops));
+        return f;
+    }
+
+    /** 默认条件：未结案 + 未完成的当前节点期限 + 距截止 7 天内 */
+    public static List<NotifyCondition> defaultConditions() {
+        List<NotifyCondition> list = new ArrayList<>();
+        list.add(cond("status", "NE", "CLOSED"));
+        list.add(cond("deadlineType", "IN", null, "LEGAL", "INTERNAL"));
+        list.add(cond("remainDays", "LTE", "7"));
+        return list;
+    }
+
+    private static NotifyCondition cond(String field, String op, String value, String... values) {
+        NotifyCondition c = new NotifyCondition();
+        c.setField(field); c.setOp(op); c.setValue(value);
+        if (values != null && values.length > 0) c.setValues(Arrays.asList(values));
+        return c;
+    }
 
     private final NotifyConfigMapper configMapper;
     private final NotifyHistoryMapper historyMapper;
     private final NotifyQueryMapper queryMapper;
+    private final NotifyImageRenderer imageRenderer;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${gsms.notify.webhook:}")
     private String defaultWebhook;
 
     public NotifyService(NotifyConfigMapper configMapper, NotifyHistoryMapper historyMapper,
-                         NotifyQueryMapper queryMapper) {
+                         NotifyQueryMapper queryMapper, NotifyImageRenderer imageRenderer) {
         this.configMapper = configMapper;
         this.historyMapper = historyMapper;
         this.queryMapper = queryMapper;
+        this.imageRenderer = imageRenderer;
     }
+
+    /** 条件字段元数据，供前端渲染下拉框 */
+    public List<ConditionFieldVO> conditionFields() { return CONDITION_FIELDS; }
 
     /* ------------------------- 配置 CRUD ------------------------- */
 
@@ -109,7 +179,7 @@ public class NotifyService {
         if (c.getCycleType() == null || !Arrays.asList("DAILY", "WEEKLY", "MONTHLY").contains(c.getCycleType())) {
             throw new BizException(ErrorCode.PARAM_INVALID, "推送周期无效");
         }
-        if (c.getAheadDays() == null || c.getAheadDays() < 1 || c.getAheadDays() > 365) {
+        if (c.getAheadDays() != null && (c.getAheadDays() < 1 || c.getAheadDays() > 365)) {
             throw new BizException(ErrorCode.PARAM_INVALID, "提前天数应在 1-365 之间");
         }
         if (c.getPushTime() != null && !c.getPushTime().matches("\\d{2}:\\d{2}")) {
@@ -124,6 +194,10 @@ public class NotifyService {
         if (c.getFields() == null || c.getFields().trim().isEmpty()) {
             c.setFields(DEFAULT_FIELDS);
         }
+        if (c.getConditions() != null && !c.getConditions().trim().isEmpty()) {
+            parseConditions(c.getConditions()); // 校验 JSON 合法性
+        }
+        if (c.getAheadDays() == null) c.setAheadDays(7);
         if (c.getIncludeOverdue() == null) c.setIncludeOverdue(1);
         if (c.getEnabled() == null) c.setEnabled(1);
     }
@@ -132,22 +206,9 @@ public class NotifyService {
 
     /** 按临时参数预览（前端未保存时也能预览） */
     public NotifyPreviewVO preview(NotifyConfig config) {
-        if (config.getAheadDays() == null) config.setAheadDays(7);
-        if (config.getIncludeOverdue() == null) config.setIncludeOverdue(1);
         if (config.getFields() == null || config.getFields().trim().isEmpty()) config.setFields(DEFAULT_FIELDS);
-        List<NotifyPreviewVO.FieldRow> rows = queryMatches(config.getAheadDays(), config.getIncludeOverdue() == 1);
-        return buildPreview(config, rows);
-    }
-
-    /** 按已保存配置 ID 预览 */
-    public NotifyPreviewVO previewById(Long id) {
-        return preview(get(id));
-    }
-
-    private List<NotifyPreviewVO.FieldRow> queryMatches(int aheadDays, boolean includeOverdue) {
-        LocalDate today = LocalDate.now();
-        LocalDate limit = today.plusDays(aheadDays);
-        List<Map<String, Object>> raw = queryMapper.selectMatches(today, limit, includeOverdue);
+        List<NotifyCondition> conds = resolveConditions(config);
+        List<Map<String, Object>> raw = queryMapper.selectByConditions(sanitize(conds));
         List<NotifyPreviewVO.FieldRow> rows = new ArrayList<>();
         for (Map<String, Object> m : raw) {
             NotifyPreviewVO.FieldRow r = new NotifyPreviewVO.FieldRow();
@@ -162,14 +223,67 @@ public class NotifyService {
             r.setCaseType(str(m.get("caseType")));
             r.setDeadlineTypeName(str(m.get("deadlineTypeName")));
             r.setStatusName(str(m.get("statusName")));
+            r.setEmployeeName(str(m.get("employeeName")));
+            r.setDeptName(str(m.get("deptName")));
+            r.setPlantArea(str(m.get("plantArea")));
+            r.setWorkshopTeam(str(m.get("workshopTeam")));
+            r.setOccurDate(str(m.get("occurDate")));
             rows.add(r);
         }
-        return rows;
+        return buildPreview(config, rows, raw);
+    }
+
+    /** 按已保存配置 ID 预览 */
+    public NotifyPreviewVO previewById(Long id) {
+        return preview(get(id));
+    }
+
+    /** 解析条件 JSON；为空时回退到默认条件（兼容旧配置） */
+    private List<NotifyCondition> resolveConditions(NotifyConfig config) {
+        if (config.getConditions() == null || config.getConditions().trim().isEmpty()) {
+            return defaultConditions();
+        }
+        return parseConditions(config.getConditions());
+    }
+
+    private List<NotifyCondition> parseConditions(String json) {
+        try {
+            List<NotifyCondition> list = objectMapper.readValue(json,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, NotifyCondition.class));
+            return list == null ? defaultConditions() : list;
+        } catch (Exception e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "推送条件格式不合法");
+        }
+    }
+
+    /** 白名单校验：过滤未知字段/操作符，避免 SQL 片段被拼接注入 */
+    private List<NotifyCondition> sanitize(List<NotifyCondition> conds) {
+        List<NotifyCondition> out = new ArrayList<>();
+        for (NotifyCondition c : conds) {
+            ConditionFieldVO meta = null;
+            for (ConditionFieldVO f : CONDITION_FIELDS) if (f.getCode().equals(c.getField())) { meta = f; break; }
+            if (meta == null || !meta.getOperators().contains(c.getOp())) continue;
+            if (("IN".equals(c.getOp()) || "NOT_IN".equals(c.getOp()))) {
+                List<String> vals = c.getValues();
+                if (vals == null && c.getValue() != null) vals = Arrays.asList(c.getValue().split(","));
+                if (vals == null || vals.isEmpty()) continue;
+                List<String> clean = new ArrayList<>();
+                for (String v : vals) if (v != null && !v.trim().isEmpty()) clean.add(v.trim());
+                if (clean.isEmpty()) continue;
+                c.setValues(clean);
+            } else if (!"IS_EMPTY".equals(c.getOp()) && !"NOT_EMPTY".equals(c.getOp())) {
+                if (c.getValue() == null || c.getValue().trim().isEmpty()) continue;
+                c.setValue(c.getValue().trim());
+            }
+            out.add(c);
+        }
+        return out;
     }
 
     private String str(Object o) { return o == null ? "" : o.toString(); }
 
-    private NotifyPreviewVO buildPreview(NotifyConfig config, List<NotifyPreviewVO.FieldRow> rows) {
+    private NotifyPreviewVO buildPreview(NotifyConfig config, List<NotifyPreviewVO.FieldRow> rows,
+                                         List<Map<String, Object>> raw) {
         NotifyPreviewVO vo = new NotifyPreviewVO();
         vo.setRows(rows);
         vo.setMatched(rows.size());
@@ -179,8 +293,45 @@ public class NotifyService {
             fields.add(new NotifyPreviewVO.FieldMeta(e.getKey(), e.getValue(), selected.contains(e.getKey())));
         }
         vo.setAvailableFields(fields);
-        vo.setContent(buildContent(config, rows, selected));
+        String title = config.getConfigName() == null ? "案件期限提醒" : config.getConfigName();
+        String rule = buildRuleText(config);
+        vo.setContent(buildContent(title, rule, rows, selected));
+        // 用原始 map（含完整字段）渲染图片，图片字段顺序与用户勾选一致
+        List<String> order = new ArrayList<>(selected);
+        byte[] png = imageRenderer.render(title, rule, raw, order);
+        vo.setImageBase64(imageRenderer.toDataUrl(png));
         return vo;
+    }
+
+    /** 规则描述：由条件生成，直观展示当前筛选口径 */
+    private String buildRuleText(NotifyConfig config) {
+        List<NotifyCondition> conds = resolveConditions(config);
+        List<String> parts = new ArrayList<>();
+        for (NotifyCondition c : sanitize(conds)) {
+            String label = c.getField();
+            for (ConditionFieldVO f : CONDITION_FIELDS) if (f.getCode().equals(c.getField())) { label = f.getLabel(); break; }
+            String v = ("IN".equals(c.getOp()) || "NOT_IN".equals(c.getOp()))
+                    ? String.join("/", c.getValues()) : c.getValue();
+            parts.add(label + " " + opLabel(c.getOp()) + " " + (v == null ? "" : v));
+        }
+        return parts.isEmpty() ? "全部案件" : String.join("；", parts);
+    }
+
+    private String opLabel(String op) {
+        switch (op) {
+            case "EQ": return "=";
+            case "NE": return "≠";
+            case "CONTAINS": return "包含";
+            case "IN": return "属于";
+            case "NOT_IN": return "不属于";
+            case "GT": return ">";
+            case "GTE": return "≥";
+            case "LT": return "<";
+            case "LTE": return "≤";
+            case "IS_EMPTY": return "为空";
+            case "NOT_EMPTY": return "不为空";
+            default: return op;
+        }
     }
 
     private Set<String> parseFields(String fields) {
@@ -193,13 +344,12 @@ public class NotifyService {
         return set;
     }
 
-    /** 生成 Markdown 正文——预览与推送共用 */
-    private String buildContent(NotifyConfig config, List<NotifyPreviewVO.FieldRow> rows, Set<String> fields) {
+    /** 生成 Markdown 正文（兼容旧版文本预览） */
+    private String buildContent(String title, String rule, List<NotifyPreviewVO.FieldRow> rows, Set<String> fields) {
         StringBuilder sb = new StringBuilder();
-        sb.append("## ").append(config.getConfigName() == null ? "案件期限提醒" : config.getConfigName()).append("\n");
+        sb.append("## ").append(title).append("\n");
         sb.append("> 统计时间：").append(LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))).append("\n");
-        sb.append("> 规则：未结案 + 当前节点未完成期限 + 距截止不足 ").append(config.getAheadDays()).append(" 天")
-          .append(config.getIncludeOverdue() != null && config.getIncludeOverdue() == 1 ? "（含已超期）" : "").append("\n\n");
+        sb.append("> 规则：").append(rule).append("\n\n");
         if (rows.isEmpty()) {
             sb.append("当前无符合条件的案件。");
             return sb.toString();
@@ -242,6 +392,11 @@ public class NotifyService {
             case "handlerName": return r.getHandlerName();
             case "deadlineTypeName": return r.getDeadlineTypeName();
             case "statusName": return r.getStatusName();
+            case "employeeName": return r.getEmployeeName();
+            case "deptName": return r.getDeptName();
+            case "plantArea": return r.getPlantArea();
+            case "workshopTeam": return r.getWorkshopTeam();
+            case "occurDate": return r.getOccurDate();
             default: return "";
         }
     }
@@ -341,9 +496,13 @@ public class NotifyService {
         if (webhook == null || webhook.trim().isEmpty()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "未配置企业微信群机器人 webhook");
         }
+        // 从 data URL 还原图片字节，计算 md5 后以 image 类型发送
+        String dataUrl = preview.getImageBase64();
+        String b64 = dataUrl.substring(dataUrl.indexOf(",") + 1);
+        byte[] png = Base64.getDecoder().decode(b64);
         String result;
         try {
-            result = sendWebhook(webhook, preview.getContent());
+            result = sendWebhookImage(webhook, png);
             if (!"ok".equalsIgnoreCase(result)) {
                 throw new BizException(ErrorCode.SYSTEM_ERROR, "企业微信返回：" + result);
             }
@@ -369,19 +528,24 @@ public class NotifyService {
         return new String(bos.toByteArray(), StandardCharsets.UTF_8);
     }
 
-    /** 调用企业微信群机器人 webhook，返回 errmsg；异常抛出由上层记录 */
-    private String sendWebhook(String webhook, String content) throws Exception {
+    /** 以 image 类型发送图片到企业微信群机器人，返回 errmsg */
+    private String sendWebhookImage(String webhook, byte[] png) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("MD5");
+        byte[] digest = md.digest(png);
+        StringBuilder hex = new StringBuilder();
+        for (byte b : digest) hex.append(String.format("%02x", b));
         Map<String, Object> body = new HashMap<>();
-        body.put("msgtype", "markdown");
-        Map<String, Object> md = new HashMap<>();
-        md.put("content", content);
-        body.put("markdown", md);
+        body.put("msgtype", "image");
+        Map<String, Object> image = new HashMap<>();
+        image.put("base64", Base64.getEncoder().encodeToString(png));
+        image.put("md5", hex.toString());
+        body.put("image", image);
         byte[] payload = objectMapper.writeValueAsBytes(body);
 
         HttpURLConnection conn = (HttpURLConnection) new URL(webhook).openConnection();
         conn.setRequestMethod("POST");
-        conn.setConnectTimeout(10000);
-        conn.setReadTimeout(10000);
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(15000);
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
         try (OutputStream os = conn.getOutputStream()) {

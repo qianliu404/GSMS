@@ -1,6 +1,8 @@
 package com.gsms.module.notify.controller;
 
 import com.gsms.common.R;
+import com.gsms.module.notify.dto.ConditionFieldVO;
+import com.gsms.module.notify.dto.NotifyCondition;
 import com.gsms.module.notify.dto.NotifyPreviewVO;
 import com.gsms.module.notify.entity.NotifyConfig;
 import com.gsms.module.notify.entity.NotifyHistory;
@@ -21,6 +23,20 @@ public class NotifyController {
 
     public NotifyController(NotifyService notifyService) {
         this.notifyService = notifyService;
+    }
+
+    /** 条件字段元数据：新增条件只需后端扩展，前端自动渲染 */
+    @GetMapping("/condition-fields")
+    @PreAuthorize("hasAuthority('notify:view')")
+    public R<List<ConditionFieldVO>> conditionFields() {
+        return R.ok(notifyService.conditionFields());
+    }
+
+    /** 默认条件（新建配置时前端可一键套用） */
+    @GetMapping("/default-conditions")
+    @PreAuthorize("hasAuthority('notify:view')")
+    public R<List<NotifyCondition>> defaultConditions() {
+        return R.ok(NotifyService.defaultConditions());
     }
 
     @GetMapping("/configs")

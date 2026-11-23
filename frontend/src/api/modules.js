@@ -143,6 +143,8 @@ export const systemApi = {
 
 /** 推送设置：周期配置、预览、测试推送、历史 */
 export const notifyApi = {
+  conditionFields: () => http.get('/notify/condition-fields'),
+  defaultConditions: () => http.get('/notify/default-conditions'),
   configs: () => http.get('/notify/configs'),
   get: (id) => http.get(`/notify/configs/${id}`),
   create: (data) => http.post('/notify/configs', data),

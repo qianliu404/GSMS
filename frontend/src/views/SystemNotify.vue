@@ -60,7 +60,7 @@
     </div>
 
     <!-- 配置抽屉 -->
-    <el-drawer v-model="drawer" :title="editing ? '编辑推送配置' : '新建推送配置'" size="560px" destroy-on-close>
+    <el-drawer v-model="drawer" :title="editing ? '编辑推送配置' : '新建推送配置'" size="720px" destroy-on-close>
       <div class="form-wrap">
         <el-form :model="form" label-width="100px" size="small">
           <el-form-item label="配置名称" required>
@@ -91,13 +91,29 @@
             <el-time-picker v-model="pushTimeObj" format="HH:mm" value-format="HH:mm" placeholder="选择时间" style="width: 160px" />
           </el-form-item>
 
-          <el-form-item label="提前天数">
-            <el-input-number v-model="form.aheadDays" :min="1" :max="365" style="width: 140px" @change="doPreview" />
-            <span class="hint">距截止不足 N 天纳入</span>
-          </el-form-item>
-
-          <el-form-item label="已超期案件">
-            <el-switch v-model="overdueBool" active-text="包含" inactive-text="不包含" @change="doPreview" />
+          <el-form-item label="推送条件">
+            <div class="cond-builder">
+              <div v-for="(c, i) in conditions" :key="i" class="cond-row">
+                <span class="cond-op">{{ i === 0 ? '当' : '并且' }}</span>
+                <el-select v-model="c.field" placeholder="字段" size="small" style="width: 120px" @change="onCondField(i)">
+                  <el-option v-for="f in conditionFields" :key="f.code" :label="f.label" :value="f.code" />
+                </el-select>
+                <el-select v-model="c.op" placeholder="操作符" size="small" style="width: 108px" @change="doPreview">
+                  <el-option v-for="op in opsOf(c.field)" :key="op" :label="opLabel(op)" :value="op" />
+                </el-select>
+                <el-select v-if="isEnum(c.field)" v-model="c.value" placeholder="值" size="small" style="width: 130px" @change="doPreview">
+                  <el-option v-for="o in optionsOf(c.field)" :key="o.value" :label="o.label" :value="o.value" />
+                </el-select>
+                <el-input v-else-if="!noValue(c.op)" v-model="c.value" placeholder="值" size="small" style="width: 130px" @change="doPreview" />
+                <span v-else class="cond-novalue">—</span>
+                <el-button link type="danger" size="small" @click="removeCond(i)">删除</el-button>
+              </div>
+              <div class="cond-actions">
+                <el-button size="small" :icon="Plus" @click="addCond">添加条件</el-button>
+                <el-button size="small" @click="resetConditions">恢复默认</el-button>
+                <span class="hint">多条条件同时满足才推送，字段可持续扩展</span>
+              </div>
+            </div>
           </el-form-item>
 
           <el-form-item label="推送字段">
@@ -125,7 +141,10 @@
             <span>消息预览</span>
             <el-button size="small" :icon="View" :loading="previewing" @click="doPreview">刷新预览</el-button>
           </div>
-          <div class="preview-box">{{ previewContent || '点击「刷新预览」查看消息效果' }}</div>
+          <div class="preview-img-wrap">
+            <img v-if="previewImage" :src="previewImage" alt="推送消息预览" class="preview-img" />
+            <div v-else class="preview-empty">点击「刷新预览」查看消息图片</div>
+          </div>
           <div v-if="previewRows.length" class="preview-meta">当前命中 {{ previewRows.length }} 件案件</div>
         </div>
 
@@ -138,7 +157,10 @@
 
     <!-- 预览弹窗（已保存配置） -->
     <el-dialog v-model="previewDialog" title="推送消息预览" width="620px">
-      <div class="preview-box dialog">{{ previewContent || '暂无内容' }}</div>
+      <div class="preview-img-wrap dialog">
+        <img v-if="previewImage" :src="previewImage" alt="推送消息预览" class="preview-img" />
+        <div v-else class="preview-empty">暂无内容</div>
+      </div>
       <div v-if="previewRows.length" class="preview-meta">当前命中 {{ previewRows.length }} 件案件</div>
       <template #footer>
         <el-button @click="previewDialog = false">关闭</el-button>
@@ -166,7 +188,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, View } from '@element-plus/icons-vue'
 import { notifyApi } from '../api/modules'
@@ -180,20 +202,27 @@ const testingId = ref(null)
 const drawer = ref(false)
 const editing = ref(false)
 const previewDialog = ref(false)
-const previewContent = ref('')
+const previewImage = ref('')
 const previewRows = ref([])
 const allFields = ref([])
+const conditionFields = ref([])
+const conditions = ref([])
 
 const weekOptions = [
   { value: 1, label: '周一' }, { value: 2, label: '周二' }, { value: 3, label: '周三' },
   { value: 4, label: '周四' }, { value: 5, label: '周五' }, { value: 6, label: '周六' }, { value: 7, label: '周日' }
 ]
 const monthOptions = Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: `${i + 1}日` }))
+const OP_LABELS = {
+  EQ: '等于', NE: '不等于', CONTAINS: '包含', IN: '属于', NOT_IN: '不属于',
+  GT: '大于', GTE: '大于等于', LT: '小于', LTE: '小于等于', IS_EMPTY: '为空', NOT_EMPTY: '不为空'
+}
+const opLabel = op => OP_LABELS[op] || op
 
 const blank = () => ({
   id: null, configName: '', enabled: 1, cycleType: 'DAILY', weekDays: '', monthDays: '',
   pushTime: '09:00', aheadDays: 7, includeOverdue: 1,
-  fields: 'caseNo,caseName,nodeName,deadlineDate,remainDays,handlerName', webhook: '', remark: ''
+  fields: 'caseNo,caseName,nodeName,deadlineDate,remainDays,handlerName', conditions: '', webhook: '', remark: ''
 })
 const form = ref(blank())
 
@@ -209,10 +238,6 @@ const fieldList = computed({
   get: () => (form.value.fields || '').split(',').filter(Boolean),
   set: v => { form.value.fields = v.join(',') }
 })
-const overdueBool = computed({
-  get: () => form.value.includeOverdue === 1,
-  set: v => { form.value.includeOverdue = v ? 1 : 0 }
-})
 const enabledBool = computed({
   get: () => form.value.enabled === 1,
   set: v => { form.value.enabled = v ? 1 : 0 }
@@ -224,10 +249,50 @@ const pushTimeObj = computed({
 
 const cycleLabel = t => ({ DAILY: '每天', WEEKLY: '每周', MONTHLY: '每月' }[t] || t)
 
+function metaOf(code) { return conditionFields.value.find(f => f.code === code) }
+function opsOf(code) { const f = metaOf(code); return f ? f.operators : [] }
+function isEnum(code) { const f = metaOf(code); return f ? f.type === 'ENUM' : false }
+function optionsOf(code) { const f = metaOf(code); return f ? f.options : [] }
+function noValue(op) { return op === 'IS_EMPTY' || op === 'NOT_EMPTY' }
+
+function conditionsToForm() {
+  const raw = form.value.conditions
+  if (raw && raw.trim()) {
+    try { conditions.value = JSON.parse(raw) } catch (e) { conditions.value = [] }
+  } else {
+    conditions.value = defaultConds.value.length ? JSON.parse(JSON.stringify(defaultConds.value)) : []
+  }
+}
+function formToConditions() { form.value.conditions = JSON.stringify(conditions.value) }
+
+function addCond() {
+  const first = conditionFields.value[0]
+  if (!first) return
+  conditions.value.push({ field: first.code, op: first.operators[0], value: '', values: [] })
+}
+function removeCond(i) { conditions.value.splice(i, 1); doPreview() }
+function onCondField(i) {
+  const f = metaOf(conditions.value[i].field)
+  conditions.value[i].op = f ? f.operators[0] : 'EQ'
+  conditions.value[i].value = ''
+  doPreview()
+}
+function resetConditions() {
+  conditions.value = JSON.parse(JSON.stringify(defaultConds.value))
+  doPreview()
+}
+
+const defaultConds = ref([])
+
 function loadAll() {
   loading.value = true
-  Promise.all([notifyApi.configs(), notifyApi.history()])
-    .then(([c, h]) => { configs.value = c || []; history.value = h || [] })
+  Promise.all([notifyApi.configs(), notifyApi.history(), notifyApi.conditionFields(), notifyApi.defaultConditions()])
+    .then(([c, h, f, d]) => {
+      configs.value = c || []
+      history.value = h || []
+      conditionFields.value = f || []
+      defaultConds.value = d || []
+    })
     .catch(e => ElMessage.error(e.message || '加载失败'))
     .finally(() => { loading.value = false })
 }
@@ -235,14 +300,17 @@ function loadAll() {
 function openCreate() {
   editing.value = false
   form.value = blank()
-  previewContent.value = ''
+  conditions.value = JSON.parse(JSON.stringify(defaultConds.value))
+  previewImage.value = ''
   previewRows.value = []
   drawer.value = true
+  doPreview()
 }
 
 function openEdit(row) {
   editing.value = true
   form.value = { ...blank(), ...row }
+  conditionsToForm()
   drawer.value = true
   doPreview()
 }
@@ -252,11 +320,16 @@ function onCycleChange() {
   if (form.value.cycleType === 'MONTHLY' && !form.value.monthDays) form.value.monthDays = '1'
 }
 
+function previewPayload() {
+  formToConditions()
+  return { ...form.value }
+}
+
 function doPreview() {
   previewing.value = true
-  notifyApi.preview(form.value)
+  notifyApi.preview(previewPayload())
     .then(r => {
-      previewContent.value = r?.content || ''
+      previewImage.value = r?.imageBase64 || ''
       previewRows.value = r?.rows || []
       allFields.value = r?.availableFields || allFields.value
     })
@@ -267,7 +340,7 @@ function doPreview() {
 function previewSaved(row) {
   notifyApi.previewById(row.id)
     .then(r => {
-      previewContent.value = r?.content || ''
+      previewImage.value = r?.imageBase64 || ''
       previewRows.value = r?.rows || []
       previewDialog.value = true
     })
@@ -276,6 +349,7 @@ function previewSaved(row) {
 
 function save() {
   if (!form.value.configName) { ElMessage.warning('请填写配置名称'); return }
+  formToConditions()
   saving.value = true
   const req = editing.value
     ? notifyApi.update(form.value.id, form.value)
@@ -297,7 +371,7 @@ function toggle(row, v) {
 function testPush(row) {
   testingId.value = row.id
   notifyApi.test(row.id)
-    .then(r => ElMessage.success(`已推送，命中 ${r?.matched || 0} 件案件`))
+    .then(r => ElMessage.success(`已推送图片，命中 ${r?.matched || 0} 件案件`))
     .catch(e => ElMessage.error(e.message || '推送失败'))
     .finally(() => { testingId.value = null; loadAll() })
 }
@@ -323,8 +397,16 @@ onMounted(loadAll)
 .form-wrap { padding: 4px 10px 20px; }
 .preview-block { margin-top: 10px; border: 1px solid var(--gsms-border); border-radius: 8px; overflow: hidden; }
 .preview-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--gsms-bg); font-weight: 600; font-size: 13px; }
-.preview-box { padding: 12px; font-size: 12.5px; line-height: 1.8; white-space: pre-wrap; word-break: break-all; min-height: 80px; background: #fff; }
-.preview-box.dialog { border: 1px solid var(--gsms-border); border-radius: 6px; max-height: 420px; overflow: auto; }
+.preview-img-wrap { padding: 12px; background: #fff; display: flex; justify-content: center; align-items: center; min-height: 120px; }
+.preview-img-wrap.dialog { border: 1px solid var(--gsms-border); border-radius: 6px; max-height: 480px; overflow: auto; }
+.preview-img { max-width: 100%; max-height: 420px; border: 1px solid var(--gsms-border); border-radius: 4px; }
+.preview-empty { color: var(--gsms-text-sub); font-size: 12.5px; padding: 24px; }
+.cond-builder { width: 100%; }
+.cond-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: nowrap; }
+.cond-op { width: 28px; color: var(--gsms-text-sub); font-size: 12px; flex: 0 0 28px; }
+.cond-novalue { width: 130px; color: var(--gsms-text-sub); font-size: 12px; }
+.cond-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.cond-actions .hint { margin-left: 0; }
 .preview-meta { padding: 6px 12px; font-size: 12px; color: var(--gsms-text-sub); border-top: 1px solid var(--gsms-border); }
 .drawer-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .el-checkbox-group { display: flex; flex-wrap: wrap; gap: 4px 14px; }

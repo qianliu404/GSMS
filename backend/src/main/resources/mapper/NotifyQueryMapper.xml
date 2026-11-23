@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gsms.module.notify.mapper.NotifyQueryMapper">
+
+    <!--
+      可扩展条件查询。所有字段与操作符均为后端白名单，value 一律参数绑定。
+      字段编码 -> SQL 列（在 conditions SQL 片段里 choose）：
+        caseNo        c.case_no
+        caseName      c.case_name
+        caseType      c.case_type
+        status        c.status
+        nodeName      d.node_name
+        nodeCode      d.node_code
+        deadlineType  d.deadline_type
+        handlerId     d.handler_id
+        handlerName   u.user_name
+        deptName      c.department_name
+        plantArea     c.plant_area
+        workshopTeam  c.workshop_team
+        remainDays    DATEDIFF(d.deadline_date, CURDATE())
+        deadlineDate  d.deadline_date
+        occurDate     c.occur_date
+        overdueLevel  d.overdue_level
+    -->
+    <sql id="conditionSql">
+        <if test="conditions != null and conditions.size() > 0">
+            <foreach collection="conditions" item="cond">
+                <if test="cond.field != null and cond.op != null">
+                    <!-- 字符串字段 -->
+                    <choose>
+                        <when test="cond.op == 'EQ'">
+                            <choose>
+                                <when test="cond.field == 'caseNo'"> AND c.case_no = #{cond.value} </when>
+                                <when test="cond.field == 'caseName'"> AND c.case_name = #{cond.value} </when>
+                                <when test="cond.field == 'caseType'"> AND c.case_type = #{cond.value} </when>
+                                <when test="cond.field == 'status'"> AND c.status = #{cond.value} </when>
+                                <when test="cond.field == 'nodeName'"> AND d.node_name = #{cond.value} </when>
+                                <when test="cond.field == 'nodeCode'"> AND d.node_code = #{cond.value} </when>
+                                <when test="cond.field == 'deadlineType'"> AND d.deadline_type = #{cond.value} </when>
+                                <when test="cond.field == 'handlerId'"> AND d.handler_id = #{cond.value} </when>
+                                <when test="cond.field == 'handlerName'"> AND u.user_name = #{cond.value} </when>
+                                <when test="cond.field == 'deptName'"> AND c.department_name = #{cond.value} </when>
+                                <when test="cond.field == 'plantArea'"> AND c.plant_area = #{cond.value} </when>
+                                <when test="cond.field == 'workshopTeam'"> AND c.workshop_team = #{cond.value} </when>
+                            </choose>
+                        </when>
+                        <when test="cond.op == 'NE'">
+                            <choose>
+                                <when test="cond.field == 'caseType'"> AND c.case_type &lt;&gt; #{cond.value} </when>
+                                <when test="cond.field == 'status'"> AND c.status &lt;&gt; #{cond.value} </when>
+                                <when test="cond.field == 'nodeCode'"> AND d.node_code &lt;&gt; #{cond.value} </when>
+                                <when test="cond.field == 'deadlineType'"> AND d.deadline_type &lt;&gt; #{cond.value} </when>
+                                <when test="cond.field == 'plantArea'"> AND c.plant_area &lt;&gt; #{cond.value} </when>
+                            </choose>
+                        </when>
+                        <when test="cond.op == 'CONTAINS'">
+                            <choose>
+                                <when test="cond.field == 'caseNo'"> AND c.case_no LIKE CONCAT('%', #{cond.value}, '%') </when>
+                                <when test="cond.field == 'caseName'"> AND c.case_name LIKE CONCAT('%', #{cond.value}, '%') </when>
+                                <when test="cond.field == 'nodeName'"> AND d.node_name LIKE CONCAT('%', #{cond.value}, '%') </when>
+                                <when test="cond.field == 'handlerName'"> AND u.user_name LIKE CONCAT('%', #{cond.value}, '%') </when>
+                                <when test="cond.field == 'deptName'"> AND c.department_name LIKE CONCAT('%', #{cond.value}, '%') </when>
+                                <when test="cond.field == 'plantArea'"> AND c.plant_area LIKE CONCAT('%', #{cond.value}, '%') </when>
+                                <when test="cond.field == 'workshopTeam'"> AND c.workshop_team LIKE CONCAT('%', #{cond.value}, '%') </when>
+                            </choose>
+                        </when>
+                        <when test="cond.op == 'IN' or cond.op == 'NOT_IN'">
+                            <choose>
+                                <when test="cond.field == 'caseType'"> AND c.case_type <if test="cond.op == 'NOT_IN'">NOT </if>IN
+                                    <foreach collection="cond.values" item="v" open="(" separator="," close=")">#{v}</foreach> </when>
+                                <when test="cond.field == 'status'"> AND c.status <if test="cond.op == 'NOT_IN'">NOT </if>IN
+                                    <foreach collection="cond.values" item="v" open="(" separator="," close=")">#{v}</foreach> </when>
+                                <when test="cond.field == 'nodeCode'"> AND d.node_code <if test="cond.op == 'NOT_IN'">NOT </if>IN
+                                    <foreach collection="cond.values" item="v" open="(" separator="," close=")">#{v}</foreach> </when>
+                                <when test="cond.field == 'deadlineType'"> AND d.deadline_type <if test="cond.op == 'NOT_IN'">NOT </if>IN
+                                    <foreach collection="cond.values" item="v" open="(" separator="," close=")">#{v}</foreach> </when>
+                                <when test="cond.field == 'handlerId'"> AND d.handler_id <if test="cond.op == 'NOT_IN'">NOT </if>IN
+                                    <foreach collection="cond.values" item="v" open="(" separator="," close=")">#{v}</foreach> </when>
+                            </choose>
+                        </when>
+                        <!-- 数值字段 -->
+                        <when test="cond.op == 'GT' or cond.op == 'GTE' or cond.op == 'LT' or cond.op == 'LTE'">
+                            <choose>
+                                <when test="cond.field == 'remainDays'"> AND DATEDIFF(d.deadline_date, CURDATE())
+                                    <choose>
+                                        <when test="cond.op == 'GT'"> &gt; </when>
+                                        <when test="cond.op == 'GTE'"> &gt;= </when>
+                                        <when test="cond.op == 'LT'"> &lt; </when>
+                                        <otherwise> &lt;= </otherwise>
+                                    </choose> #{cond.value} </when>
+                                <when test="cond.field == 'deadlineDate'"> AND d.deadline_date
+                                    <choose>
+                                        <when test="cond.op == 'GT'"> &gt; </when>
+                                        <when test="cond.op == 'GTE'"> &gt;= </when>
+                                        <when test="cond.op == 'LT'"> &lt; </when>
+                                        <otherwise> &lt;= </otherwise>
+                                    </choose> #{cond.value} </when>
+                                <when test="cond.field == 'occurDate'"> AND c.occur_date
+                                    <choose>
+                                        <when test="cond.op == 'GT'"> &gt; </when>
+                                        <when test="cond.op == 'GTE'"> &gt;= </when>
+                                        <when test="cond.op == 'LT'"> &lt; </when>
+                                        <otherwise> &lt;= </otherwise>
+                                    </choose> #{cond.value} </when>
+                                <when test="cond.field == 'overdueLevel'"> AND d.overdue_level
+                                    <choose>
+                                        <when test="cond.op == 'GT'"> &gt; </when>
+                                        <when test="cond.op == 'GTE'"> &gt;= </when>
+                                        <when test="cond.op == 'LT'"> &lt; </when>
+                                        <otherwise> &lt;= </otherwise>
+                                    </choose> #{cond.value} </when>
+                            </choose>
+                        </when>
+                        <when test="cond.op == 'IS_EMPTY'">
+                            <choose>
+                                <when test="cond.field == 'handlerId'"> AND (d.handler_id IS NULL OR d.handler_id = '') </when>
+                                <when test="cond.field == 'plantArea'"> AND (c.plant_area IS NULL OR c.plant_area = '') </when>
+                            </choose>
+                        </when>
+                        <when test="cond.op == 'NOT_EMPTY'">
+                            <choose>
+                                <when test="cond.field == 'handlerId'"> AND d.handler_id IS NOT NULL AND d.handler_id &lt;&gt; '' </when>
+                                <when test="cond.field == 'plantArea'"> AND c.plant_area IS NOT NULL AND c.plant_area &lt;&gt; '' </when>
+                            </choose>
+                        </when>
+                    </choose>
+                </if>
+            </foreach>
+        </if>
+    </sql>
+
+    <select id="selectByConditions" resultType="map">
+        SELECT c.case_no AS caseNo, c.case_name AS caseName, c.case_type AS caseType,
+        c.employee_name AS employeeName, c.department_name AS deptName,
+        c.plant_area AS plantArea, c.workshop_team AS workshopTeam, c.occur_date AS occurDate,
+        d.node_name AS nodeName, d.node_code AS nodeCode, d.deadline_date AS deadlineDate,
+        DATEDIFF(d.deadline_date, CURDATE()) AS remainDays,
+        COALESCE(u.user_name, d.handler_id) AS handlerName, d.handler_id AS handlerId,
+        d.deadline_type AS deadlineType, d.overdue_level AS overdueLevel, d.status AS deadlineStatus,
+        CASE d.deadline_type WHEN 'LEGAL' THEN '法定' WHEN 'INTERNAL' THEN '内部' ELSE d.deadline_type END AS deadlineTypeName,
+        CASE d.status WHEN 'PENDING' THEN '待办' WHEN 'OVERDUE' THEN '已超期' WHEN 'REMINDED' THEN '已提醒' ELSE d.status END AS statusName
+        FROM case_main c
+        JOIN deadline_reminder d ON d.case_id = c.id AND d.node_code = c.status
+        LEFT JOIN sys_user u ON u.user_id = d.handler_id
+        WHERE c.deleted = 0
+        <include refid="conditionSql"/>
+        ORDER BY d.deadline_date
+        LIMIT 500
+    </select>
+
+</mapper>

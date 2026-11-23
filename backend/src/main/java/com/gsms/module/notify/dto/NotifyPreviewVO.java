@@ -9,8 +9,10 @@ import java.util.List;
 @Data
 public class NotifyPreviewVO {
 
-    /** 生成的消息正文（Markdown） */
+    /** 生成的消息正文（Markdown，兼容旧版） */
     private String content;
+    /** 消息图片（data:image/png;base64,...），用于预览与推送 */
+    private String imageBase64;
     /** 命中案件数 */
     private int matched;
     /** 命中明细，每个元素是一条案件的可选字段值 */
@@ -29,6 +31,11 @@ public class NotifyPreviewVO {
         private String caseType;
         private String deadlineTypeName;
         private String statusName;
+        private String employeeName;
+        private String deptName;
+        private String plantArea;
+        private String workshopTeam;
+        private String occurDate;
     }
 
     @Data
