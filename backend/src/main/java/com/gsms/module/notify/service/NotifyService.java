@@ -300,9 +300,9 @@ public class NotifyService {
         String title = config.getConfigName() == null ? "案件期限提醒" : config.getConfigName();
         String rule = buildRuleText(config);
         vo.setContent(buildContent(title, rule, rows, selected));
-        // 用原始 map（含完整字段）渲染图片，图片字段顺序与用户勾选一致
+        // 用原始 map（含完整字段）渲染图片；图片为表格样式，列顺序与勾选一致
         List<String> order = new ArrayList<>(selected);
-        byte[] png = imageRenderer.render(title, rule, raw, order);
+        byte[] png = imageRenderer.render(title, raw, order);
         vo.setImageBase64(imageRenderer.toDataUrl(png));
         return vo;
     }
@@ -467,11 +467,11 @@ public class NotifyService {
 
     /** 供运维手动触发全部启用配置（不受时间窗口限制） */
     public Map<String, Integer> pushAll() {
-        int success = 0, fail = 0;
+        int success = 0, fail = 0, skipped = 0;
         for (NotifyConfig c : configMapper.selectEnabled()) {
             try {
-                doPush(c, false);
-                success++;
+                if (doPush(c, false) == 0) skipped++;
+                else success++;
             } catch (Exception e) {
                 fail++;
                 log.error("推送配置[{}]执行失败", c.getId(), e);
@@ -480,6 +480,7 @@ public class NotifyService {
         Map<String, Integer> r = new HashMap<>();
         r.put("success", success);
         r.put("fail", fail);
+        r.put("skipped", skipped);
         return r;
     }
 
@@ -514,6 +515,12 @@ public class NotifyService {
 
     private int doPush(NotifyConfig config, boolean isTest) throws Exception {
         NotifyPreviewVO preview = preview(config);
+        // 没有满足条件的数据时不推送，只留一条跳过记录
+        if (preview.getMatched() == 0) {
+            recordHistory(config, 0, "SKIPPED", null, "无符合条件的数据，未推送");
+            log.info("推送配置[{}]无符合条件数据，跳过推送", config.getId());
+            return 0;
+        }
         String webhook = config.getWebhook() != null && !config.getWebhook().trim().isEmpty()
                 ? config.getWebhook() : defaultWebhook;
         if (webhook == null || webhook.trim().isEmpty()) {

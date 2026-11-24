@@ -50,3 +50,5 @@ deploy/remote/step14_notify.ps1
 deploy/remote/step15_notify_v2.ps1
 
 deploy/remote/step16_restdays.ps1
+
+deploy/remote/step17_table.ps1

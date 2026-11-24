@@ -371,7 +371,11 @@ function toggle(row, v) {
 function testPush(row) {
   testingId.value = row.id
   notifyApi.test(row.id)
-    .then(r => ElMessage.success(`已推送图片，命中 ${r?.matched || 0} 件案件`))
+    .then(r => {
+      const n = r?.matched || 0
+      if (n === 0) ElMessage.warning('无符合条件的数据，未推送')
+      else ElMessage.success(`已推送图片，命中 ${n} 件案件`)
+    })
     .catch(e => ElMessage.error(e.message || '推送失败'))
     .finally(() => { testingId.value = null; loadAll() })
 }
