@@ -452,16 +452,37 @@ public class NotifyService {
         for (NotifyConfig c : configs) {
             try {
                 if (!shouldPushToday(c, today)) continue;
-                // 只在推送时间所在分钟内触发，避免每分钟重复推送
                 LocalTime pushAt = parseTime(c.getPushTime());
-                if (pushAt == null || Math.abs(now.getHour() * 60 + now.getMinute() - (pushAt.getHour() * 60 + pushAt.getMinute())) > 1) {
+                if (pushAt == null) continue;
+                // 到点后 30 分钟内有效（容忍服务重启/短暂停机），精确到分钟比较
+                LocalTime nowMinute = now.withSecond(0).withNano(0);
+                if (nowMinute.isBefore(pushAt) || nowMinute.isAfter(pushAt.plusMinutes(30))) {
+                    continue;
+                }
+                // 当日已执行过（成功/跳过/失败任一结果）则不再重复推送，避免一分钟内多次发送
+                if (pushedToday(c.getId(), today)) {
                     continue;
                 }
                 doPush(c, false);
             } catch (Exception e) {
                 log.error("推送配置[{}]执行失败", c.getId(), e);
-                recordHistory(c, 0, "FAIL", null, e.getMessage());
+                recordHistory(c, 0, "FAIL", null, e.getMessage(), false);
             }
+        }
+    }
+
+    /** 当天该配置是否已有推送记录（作为当日去重依据） */
+    private boolean pushedToday(Long configId, LocalDate today) {
+        try {
+            Long n = historyMapper.selectCount(Wrappers.<NotifyHistory>lambdaQuery()
+                    .eq(NotifyHistory::getConfigId, configId)
+                    .eq(NotifyHistory::getIsTest, 0)
+                    .ge(NotifyHistory::getPushTime, today.atStartOfDay())
+                    .lt(NotifyHistory::getPushTime, today.plusDays(1).atStartOfDay()));
+            return n != null && n > 0;
+        } catch (Exception e) {
+            log.warn("查询当日推送记录失败，按未推送处理：{}", e.getMessage());
+            return false;
         }
     }
 
@@ -517,7 +538,7 @@ public class NotifyService {
         NotifyPreviewVO preview = preview(config);
         // 没有满足条件的数据时不推送，只留一条跳过记录
         if (preview.getMatched() == 0) {
-            recordHistory(config, 0, "SKIPPED", null, "无符合条件的数据，未推送");
+            recordHistory(config, 0, "SKIPPED", null, "无符合条件的数据，未推送", isTest);
             log.info("推送配置[{}]无符合条件数据，跳过推送", config.getId());
             return 0;
         }
@@ -537,10 +558,10 @@ public class NotifyService {
                 throw new BizException(ErrorCode.SYSTEM_ERROR, "企业微信返回：" + result);
             }
         } catch (Exception e) {
-            recordHistory(config, preview.getMatched(), "FAIL", preview.getContent(), e.getMessage());
+            recordHistory(config, preview.getMatched(), "FAIL", preview.getContent(), e.getMessage(), isTest);
             throw e;
         }
-        recordHistory(config, preview.getMatched(), "SUCCESS", preview.getContent(), null);
+        recordHistory(config, preview.getMatched(), "SUCCESS", preview.getContent(), null, isTest);
         if (!isTest) {
             NotifyConfig c = get(config.getId());
             c.setLastPushTime(LocalDateTime.now());
@@ -594,7 +615,8 @@ public class NotifyService {
         return String.valueOf(errmsg == null ? resp : errmsg);
     }
 
-    private void recordHistory(NotifyConfig config, int matched, String result, String message, String error) {
+    private void recordHistory(NotifyConfig config, int matched, String result, String message,
+                               String error, boolean isTest) {
         try {
             NotifyHistory h = new NotifyHistory();
             h.setConfigId(config.getId());
@@ -602,6 +624,7 @@ public class NotifyService {
             h.setPushTime(LocalDateTime.now());
             h.setMatched(matched);
             h.setResult(result);
+            h.setIsTest(isTest ? 1 : 0);
             if (message != null && message.length() > 2000) message = message.substring(0, 2000);
             h.setMessage(message);
             if (error != null && error.length() > 500) error = error.substring(0, 500);

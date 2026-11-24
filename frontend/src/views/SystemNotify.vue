@@ -173,11 +173,16 @@
       <div class="card-body">
         <el-table :data="history" v-loading="loading" size="small" border max-height="320">
           <el-table-column prop="pushTime" label="推送时间" width="160" />
-          <el-table-column prop="configName" label="配置名称" min-width="140" />
-          <el-table-column prop="matched" label="命中数" width="80" />
-          <el-table-column label="结果" width="90">
+          <el-table-column label="配置名称" min-width="160">
             <template #default="{ row }">
-              <el-tag :type="row.result === 'SUCCESS' ? 'success' : 'danger'" size="small">{{ row.result }}</el-tag>
+              <span>{{ row.configName }}</span>
+              <el-tag v-if="row.isTest === 1" size="small" type="info" class="test-tag">手动测试</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="matched" label="命中数" width="80" />
+          <el-table-column label="结果" width="100">
+            <template #default="{ row }">
+              <el-tag :type="resultType(row.result)" size="small">{{ row.result }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="error" label="失败原因" min-width="180" show-overflow-tooltip />
@@ -248,6 +253,7 @@ const pushTimeObj = computed({
 })
 
 const cycleLabel = t => ({ DAILY: '每天', WEEKLY: '每周', MONTHLY: '每月' }[t] || t)
+const resultType = r => (r === 'SUCCESS' ? 'success' : r === 'SKIPPED' ? 'warning' : 'danger')
 
 function metaOf(code) { return conditionFields.value.find(f => f.code === code) }
 function opsOf(code) { const f = metaOf(code); return f ? f.operators : [] }
@@ -401,6 +407,7 @@ onMounted(loadAll)
 .form-wrap { padding: 4px 10px 20px; }
 .preview-block { margin-top: 10px; border: 1px solid var(--gsms-border); border-radius: 8px; overflow: hidden; }
 .preview-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--gsms-bg); font-weight: 600; font-size: 13px; }
+.test-tag { margin-left: 6px; }
 .preview-img-wrap { padding: 12px; background: #fff; display: flex; justify-content: center; align-items: center; min-height: 120px; }
 .preview-img-wrap.dialog { border: 1px solid var(--gsms-border); border-radius: 6px; max-height: 480px; overflow: auto; }
 .preview-img { max-width: 100%; max-height: 420px; border: 1px solid var(--gsms-border); border-radius: 4px; }

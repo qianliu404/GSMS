@@ -21,4 +21,6 @@ public class NotifyHistory {
     private String result;
     private String message;
     private String error;
+    /** 是否手动测试（1=测试，0=定时/手动批量） */
+    private Integer isTest;
 }
