@@ -114,6 +114,7 @@
                     v-model="nodeResultForm[field.key]"
                     :min="0"
                     :precision="field.precision || 0"
+                    :step="field.step || 1"
                     :controls="false"
                     :disabled="detail.archiveStatus === 1"
                     :placeholder="field.placeholder"
@@ -996,7 +997,9 @@ const NODE_RESULT_FIELDS = {
           key: 'restDays',
           label: '休假天数',
           type: 'number',
-          placeholder: '如：90'
+          precision: 1,
+          step: 0.5,
+          placeholder: '如：9.5'
         }
       ]
     }
